@@ -41,10 +41,9 @@
 
 **文件：**
 - 创建：`backend/admin-service/src/main/java/com/oa/service/system/AuthService.java`
-- 创建：`backend/admin-service/src/main/java/com/oa/service/system/impl/AuthServiceImpl.java`
 - 创建：`backend/admin-service/src/main/java/com/oa/service/system/SessionService.java`
-- 创建：`backend/admin-action/src/main/java/com/oa/action/security/TokenAuthenticationFilter.java`
-- 创建：`backend/admin-action/src/main/java/com/oa/action/system/controller/AuthController.java`
+- 创建：`backend/admin-boot/src/main/java/com/oa/boot/security/TokenAuthenticationFilter.java`
+- 创建：`backend/admin-action/src/main/java/com/oa/action/controller/system/AuthController.java`
 
 - [ ] 测试错误密码不创建会话。
 - [ ] 测试成功登录生成 256 位随机 Token，Redis 只保存 Token 哈希。
@@ -71,13 +70,13 @@
 
 **文件：**
 - 创建：`backend/admin-service/src/main/java/com/oa/service/system/{Employee,Department,Role,Resource,SystemApi}Service.java`
-- 创建：`backend/admin-service/src/main/java/com/oa/service/system/impl/**`
-- 创建：`backend/admin-action/src/main/java/com/oa/action/system/controller/**`
+- 创建：`backend/admin-action/src/main/java/com/oa/action/controller/system/**`
 
 - [ ] 按员工、部门、角色、资源、接口顺序分别编写失败测试。
 - [ ] 实现分页、详情、新增、修改、启停、删除和关联保存。
 - [ ] 实现部门与资源树的环路、层级和删除约束。
 - [ ] 实现员工角色、角色资源、资源接口的事务保存。
+- [ ] 员工禁用、删除和密码重置必须调用 `SessionService.invalidateEmployeeSessions`，并测试全部登录会话立即失效。
 - [ ] 为所有接口补齐 OpenAPI 文档。
 - [ ] 运行后端全量测试。
 

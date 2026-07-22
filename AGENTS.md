@@ -19,7 +19,13 @@
 - 使用 Java 17、Spring Boot 3、MyBatis-Plus、MySQL、Druid、Redis 和 springdoc-openapi。
 - 基础包名统一为 `com.oa`。
 - Maven 模块依赖方向固定为：`admin-boot → admin-action → admin-service → admin-dao → admin-entity → admin-common`。
+- `admin-action` 只放 Controller，包路径统一使用 `com.oa.action.controller.<业务模块>`；过滤器、拦截器、Web/CORS 配置和全局异常处理统一放在 `admin-boot`。跨模块共享的请求属性名、Cookie 名等常量放在 `admin-common`，禁止 `admin-action` 反向依赖 `admin-boot`。
+- 当前登录会话仅支持单机 Redis。会话与员工会话索引由同一 Lua 脚本原子维护，禁止直接配置 Redis Cluster；如需支持集群，必须先重新设计键槽和批量失效方案。
 - 系统能力放在各层 `system` 子包；后续业务按相同方式增加业务子包，不新增业务 Maven 模块。
+- 默认直接定义具体类；只有存在两个及以上生产实现时才抽取接口，测试 Fake/Mock 不作为拆分接口的理由。Mapper 等框架要求的接口除外。
+- 没有对应接口时不使用 `impl` 包；配置类放 `config`，存储适配类按职责放 `store` 等语义化子包。
+- Service 不写 SQL，也不构造 MyBatis-Plus `Wrapper`；数据查询和修改封装为语义化 Mapper 方法。简单单表查询优先在 Mapper 默认方法中使用 MyBatis-Plus，复杂查询和联表查询放 Mapper XML。
+- 非必要不使用 `SELECT ... FOR UPDATE` 等数据库行锁；只有存在明确的并发一致性要求且普通事务、唯一索引或条件更新无法满足时才使用，并说明锁定范围和事务边界。禁止在持有数据库行锁期间调用 Redis、HTTP 等外部服务。
 - DTO 放在 `admin-common/model/<业务>/dto`，VO 放在 `admin-common/model/<业务>/vo`，业务枚举统一放在 `admin-common/model/<业务>/enums`。
 - 数据对象使用传统 Java Bean：普通 `class`、`private` 字段、无参构造，以及显式标准 Getter/Setter；禁止使用 `record`、Lombok、链式 Setter 或仅构造器赋值的对象。
 - Entity、DTO、VO、统一响应、分页对象等所有对象字段上方必须使用 `/** 中文字段说明 */`，明确说明字段用途；Getter/Setter 不写重复的方法注释。
@@ -44,6 +50,7 @@
 - 不使用 JWT 和 Spring Security 框架；仅可使用 `spring-security-crypto` 的 BCrypt 工具。
 - 登录 Token 只通过 HttpOnly Cookie `ADMIN_TOKEN` 传输，不支持 `Authorization` 请求头。
 - Redis 只保存 Token 哈希对应的会话，空闲有效期 1 天，有效访问自动续期。
+- Redis 会话值使用明确的传统 Java 缓存对象，不使用 `Map` 表达缓存字段；缓存对象不得直接作为接口 VO 返回。
 - 权限链路固定为：员工 → 角色 → 资源 → 接口。
 - 接口路径就是权限资源标识，不定义独立资源码，也不按 HTTP Method 区分。
 - 不同 HTTP Method 不得复用相同接口路径。

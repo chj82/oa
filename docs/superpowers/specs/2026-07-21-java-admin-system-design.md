@@ -129,12 +129,13 @@ backend/
 │       │   └── controller/
 │       ├── order/
 │       │   └── controller/
-│       ├── security/
-│       └── handler/
 └── admin-boot/
     └── src/main/
         ├── java/com/oa/boot/
-        │   └── OaApplication.java
+        │   ├── OaApplication.java
+        │   ├── security/
+        │   ├── config/
+        │   └── advice/
         └── resources/
             ├── application.yml
             └── application-local.yml
@@ -147,9 +148,11 @@ backend/
 - `admin-common`：共享注解、统一响应、基础异常，以及统一模型目录；每个业务子包内再按 `dto`、`vo`、`enums` 区分请求对象、响应对象和业务枚举。
 - `admin-entity`：MyBatis-Plus 实体和数据库字段映射，不保存 DTO、VO 或业务枚举。
 - `admin-dao`：Mapper 和 Mapper XML，不承载业务规则。
-- `admin-service`：Service 接口、实现和事务，承载系统及具体业务逻辑，不再单独建立 `model` 包。
-- `admin-action`：Controller、认证过滤器、权限拦截器和统一异常处理，不保存 DTO 或 VO。
-- `admin-boot`：Spring Boot 启动、运行配置和模块装配，不放业务逻辑。
+- `admin-service`：具体 Service 类和事务，承载系统及具体业务逻辑；只有多个生产实现时才拆分接口，不再单独建立 `model` 包。
+- `admin-action`：只保存 Controller，包路径统一使用 `com.oa.action.controller.<业务模块>`；不保存 DTO、VO、过滤器、拦截器、配置或异常处理。
+- Service 默认使用具体类；没有对应接口时不建立 `impl` 包，配置类放 `config`，存储适配类放 `store` 等语义化子包。
+- Redis 部署边界：当前登录会话仅支持单机 Redis。会话键与员工会话索引键由同一 Lua 脚本原子维护，不兼容 Redis Cluster 的跨键槽执行；启用集群前必须重新设计键槽和员工会话批量失效方案。
+- `admin-boot`：Spring Boot 启动、运行配置和 Web 模块装配，承载过滤器、拦截器、CORS 配置和统一异常处理，不放具体业务逻辑。
 - 系统能力放在各层的 `system` 子包；后续业务按稳定边界增加 `order`、`product` 等对应子包，不新增 Maven 业务模块。
 
 ### 4.1 分层职责
@@ -158,15 +161,16 @@ backend/
 - `admin-service` 定义 Service 接口，`impl` 子包负责业务规则和事务边界；跨业务调用只调用对方 Service 接口。
 - `admin-dao` 定义 MyBatis-Plus Mapper；复杂 SQL 放在同名 Mapper XML 中。
 - `admin-entity` 映射数据库表，不直接作为接口请求或响应对象。
+- Service 不直接构造 MyBatis-Plus `Wrapper` 或编写 SQL；所有数据访问通过语义化 Mapper 方法完成，复杂查询放 Mapper XML。
 - DTO 放在 `admin-common/model/<业务>/dto`，VO 放在 `admin-common/model/<业务>/vo`，业务枚举放在 `admin-common/model/<业务>/enums`，Action 和 Service 共同使用。
 - DTO、VO 和其他数据对象使用传统 Java Bean，不使用 `record` 或 Lombok；对象字段必须使用中文注释说明用途。
 - 业务枚举统一定义 `code`、`name` 字段：数据库持久化使用 `code`，中文展示使用 `name`。
 - Entity 只使用与数据库字段对应的原始 Java 类型，不直接引用业务枚举；状态等枚举转换由 Service 映射处理。
 - Entity 中数据库 `NOT NULL` 的数值字段使用 Java 基本类型，允许 `NULL` 的数值字段使用包装类型；DTO、VO 按接口可空语义定义。
-- 登录和 Token 会话规则放在 `admin-service/system`，Token 认证过滤器与接口鉴权拦截器放在 `admin-action/security`。
-- 统一异常类型放在 `admin-common`，异常到 HTTP 响应的转换放在 `admin-action/handler`。
+- 登录和 Token 会话规则放在 `admin-service/system`，Token 认证过滤器与接口鉴权拦截器放在 `admin-boot/security`。
+- 统一异常类型放在 `admin-common`，异常到 HTTP 响应的转换放在 `admin-boot/advice`。
 
-Service 接口与实现层按传统分层保留。Controller 不直接调用 Mapper，Mapper 不承载业务决策。简单 CRUD 不额外创建 Repository 层。
+Service 按传统分层保留，但默认直接定义具体 Service 类；只有存在两个及以上生产实现时才拆分接口与实现。测试 Fake/Mock 不作为抽取接口的理由。Controller 不直接调用 Mapper，Mapper 不承载业务决策。简单 CRUD 不额外创建 Repository 层。
 
 ### 4.2 依赖规则
 
@@ -479,7 +483,7 @@ public EmployeeVO create(@Valid @RequestBody EmployeeCreateDTO request) {
 - 登录成功后通过 `Set-Cookie` 写入唯一的会话 Token，不返回 Refresh Token、员工信息或权限数据；前端再通过当前员工接口获取展示信息和权限。
 - Cookie 名称固定为 `ADMIN_TOKEN`，设置 `HttpOnly`、`Path=/` 和 `SameSite=Lax`；非本地 HTTPS 环境必须设置 `Secure`。前端请求启用 `credentials: "include"`，不读取或保存 Token。
 - 项目不支持通过 `Authorization` 或其他自定义请求头传递 Token，也不得把 Token 放入 URL、响应正文、日志或错误信息。
-- Redis 只使用 Token 的 SHA-256 哈希作为会话键，值保存员工 ID、用户名、姓名和超级管理员标记等最小登录信息。
+- Redis 只使用 Token 的 SHA-256 哈希作为会话键，值使用明确的会话缓存对象保存员工 ID、用户名、姓名和超级管理员标记等最小登录信息，不使用 `Map` 表达缓存字段，也不直接将缓存对象作为接口响应。
 - 会话键使用 `admin:session:<tokenHash>`，员工会话索引使用 `admin:employee-sessions:<employeeId>` Set；登录时写入索引，退出或失效时同步移除，索引中的过期成员在访问时惰性清理。
 - Redis 会话空闲有效期为 1 天。`TokenAuthenticationFilter` 每次成功读取有效会话后将过期时间重新设置为 1 天；公开接口和无效 Token 不续期。
 - `TokenAuthenticationFilter` 建立请求级当前员工上下文，请求结束时必须清理上下文。
@@ -608,9 +612,10 @@ Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenA
 
 - 事务边界统一放在 Service 实现方法，使用 `@Transactional`。
 - Controller 和 Mapper 不开启业务事务。
+- 简单单表查询优先在 Mapper 默认方法中使用 MyBatis-Plus，复杂查询和联表查询放 Mapper XML；Service 不构造查询 Wrapper。
 - 多表授权保存和初始化必须在单事务内完成。
 - 唯一性最终由数据库唯一索引保证，Service 的预检查只用于返回友好错误。
-- 对需要串行修改的员工、角色和树节点使用明确的行锁查询；不得依赖 JVM 内存锁解决数据库并发。
+- 非必要不使用 `SELECT ... FOR UPDATE` 等数据库行锁。只有存在明确的并发一致性要求且普通事务、唯一索引或条件更新无法满足时才使用，并说明锁定范围和事务边界；禁止在持有数据库行锁期间调用 Redis、HTTP 等外部服务。
 - 批量保存关联关系时，先校验全部目标对象，再统一写入，避免部分成功。
 
 ## 14. 测试与验收

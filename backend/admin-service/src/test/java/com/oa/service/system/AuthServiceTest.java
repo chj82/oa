@@ -1,4 +1,4 @@
-package com.oa.service.system.impl;
+package com.oa.service.system;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -11,27 +11,26 @@ import com.oa.common.exception.BusinessException;
 import com.oa.common.model.system.dto.LoginDTO;
 import com.oa.dao.system.EmployeeMapper;
 import com.oa.entity.system.EmployeeEntity;
-import com.oa.service.system.SessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
-class AuthServiceImplTest {
+class AuthServiceTest {
   @Mock private EmployeeMapper employeeMapper;
   @Mock private SessionService sessionService;
-  private AuthServiceImpl authService;
+  private AuthService authService;
 
   @BeforeEach
   void setUp() {
     MockitoAnnotations.openMocks(this);
-    authService = new AuthServiceImpl(employeeMapper, sessionService, new BCryptPasswordEncoder());
+    authService = new AuthService(employeeMapper, sessionService, new BCryptPasswordEncoder());
   }
 
   @Test
   void 错误用户名不创建会话() {
-    when(employeeMapper.selectOne(any())).thenReturn(null);
+    when(employeeMapper.selectByUsername("missing")).thenReturn(null);
     BusinessException exception =
         assertThrows(BusinessException.class, () -> authService.login(login("missing", "wrong")));
     assertEquals("用户名或密码错误", exception.getMessage());
@@ -40,7 +39,7 @@ class AuthServiceImplTest {
 
   @Test
   void 错误密码不创建会话() {
-    when(employeeMapper.selectOne(any())).thenReturn(employee("correct", 1));
+    when(employeeMapper.selectByUsername("user")).thenReturn(employee("correct", 1));
     BusinessException exception =
         assertThrows(BusinessException.class, () -> authService.login(login("user", "wrong")));
     assertEquals("用户名或密码错误", exception.getMessage());
@@ -49,7 +48,7 @@ class AuthServiceImplTest {
 
   @Test
   void 禁用员工不创建会话() {
-    when(employeeMapper.selectOne(any())).thenReturn(employee("correct", 0));
+    when(employeeMapper.selectByUsername("user")).thenReturn(employee("correct", 0));
     BusinessException exception =
         assertThrows(BusinessException.class, () -> authService.login(login("user", "correct")));
     assertEquals("用户名或密码错误", exception.getMessage());
@@ -58,7 +57,7 @@ class AuthServiceImplTest {
 
   @Test
   void 正确凭据创建会话并返回令牌() {
-    when(employeeMapper.selectOne(any())).thenReturn(employee("correct", 1));
+    when(employeeMapper.selectByUsername("user")).thenReturn(employee("correct", 1));
     when(sessionService.createSession(any())).thenReturn("token");
     assertEquals("token", authService.login(login("user", "correct")));
   }
