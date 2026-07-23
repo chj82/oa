@@ -36,7 +36,7 @@
 - MySQL 8.0，字符集使用 `utf8mb4`
 - Redis 6.2+
 
-标准单表 CRUD 使用 MyBatis-Plus，复杂关联查询、权限查询和树查询使用 Mapper XML。不得为了避免编写 SQL 而把复杂查询堆入条件构造器。
+标准单表 CRUD 使用 MyBatis-Plus。数据访问优先拆为语义明确的单表查询；权限链按员工、员工角色、启用角色、角色资源、有效资源及父资源、资源接口逐步查询，不使用一条多表 SQL。只有单表查询无法合理完成时才使用 Mapper XML 关联查询，且单条查询最多关联 3 张表。不得为了避免编写 SQL 而把复杂查询堆入 Service 条件构造器。
 
 数据库连接池使用 Alibaba Druid，不启用 Druid 内置监控页面，避免增加额外管理入口。接口文档由 springdoc-openapi 根据 Spring MVC Controller 和注解自动生成，并通过 Swagger UI 展示。登录态使用 Redis 服务端会话，不使用 JWT，也不引入 Spring Security 框架；密码哈希仅使用 `spring-security-crypto` 提供的 BCrypt 工具。
 
@@ -102,8 +102,9 @@ backend/
 │           ├── system/
 │           │   ├── dto/            # 系统请求对象
 │           │   ├── vo/             # 系统响应对象
-│           │   └── enums/          # 系统业务枚举
-│           └── order/              # 后续业务同样按 dto、vo、enums 分包
+│           │   ├── enums/          # 系统业务枚举
+│           │   └── cache/          # 系统缓存对象
+│           └── order/              # 后续业务按模型用途建立语义子包
 ├── admin-entity/
 │   └── src/main/java/com/oa/entity/
 │       ├── system/
@@ -120,15 +121,15 @@ backend/
 ├── admin-service/
 │   └── src/main/java/com/oa/service/
 │       ├── system/
-│       │   └── impl/
-│       └── order/
-│           └── impl/
+│       │   ├── config/
+│       │   ├── store/
+│       │   └── *Service.java
+│       └── order/                  # 后续具体业务示例
 ├── admin-action/
 │   └── src/main/java/com/oa/action/
-│       ├── system/
-│       │   └── controller/
-│       ├── order/
-│       │   └── controller/
+│       └── controller/
+│           ├── system/
+│           └── order/              # 后续具体业务示例
 └── admin-boot/
     └── src/main/
         ├── java/com/oa/boot/
@@ -145,25 +146,26 @@ backend/
 
 模块职责：
 
-- `admin-common`：共享注解、统一响应、基础异常，以及统一模型目录；每个业务子包内再按 `dto`、`vo`、`enums` 区分请求对象、响应对象和业务枚举。
+- `admin-common`：共享注解、统一响应、基础异常，以及唯一的共享模型目录；每个业务子包内按 `dto`、`vo`、`enums`、`cache` 等用途建立语义子包。
 - `admin-entity`：MyBatis-Plus 实体和数据库字段映射，不保存 DTO、VO 或业务枚举。
 - `admin-dao`：Mapper 和 Mapper XML，不承载业务规则。
-- `admin-service`：具体 Service 类和事务，承载系统及具体业务逻辑；只有多个生产实现时才拆分接口，不再单独建立 `model` 包。
+- `admin-service`：具体 Service 类和事务，承载系统及具体业务逻辑；只有多个生产实现时才拆分接口，不得单独建立 `model` 包或定义数据模型。
 - `admin-action`：只保存 Controller，包路径统一使用 `com.oa.action.controller.<业务模块>`；不保存 DTO、VO、过滤器、拦截器、配置或异常处理。
 - Service 默认使用具体类；没有对应接口时不建立 `impl` 包，配置类放 `config`，存储适配类放 `store` 等语义化子包。
-- Redis 部署边界：当前登录会话仅支持单机 Redis。会话键与员工会话索引键由同一 Lua 脚本原子维护，不兼容 Redis Cluster 的跨键槽执行；启用集群前必须重新设计键槽和员工会话批量失效方案。
+- Redis 部署边界：当前登录会话和员工权限缓存仅支持单机 Redis。会话键与员工会话索引键、权限版本与员工权限键、全局失效标记及员工重建锁均存在 Lua 跨键访问，不兼容 Redis Cluster 的跨键槽执行；启用集群前必须重新设计键槽、员工会话批量失效和权限缓存失效方案。
 - `admin-boot`：Spring Boot 启动、运行配置和 Web 模块装配，承载过滤器、拦截器、CORS 配置和统一异常处理，不放具体业务逻辑。
 - 系统能力放在各层的 `system` 子包；后续业务按稳定边界增加 `order`、`product` 等对应子包，不新增 Maven 业务模块。
 
 ### 4.1 分层职责
 
 - `admin-action` 负责 HTTP 参数接收、校验、当前用户上下文和响应装配。
-- `admin-service` 定义 Service 接口，`impl` 子包负责业务规则和事务边界；跨业务调用只调用对方 Service 接口。
+- `admin-service` 默认定义具体 Service 类并负责业务规则和事务边界；只有存在多个生产实现时才抽取接口，跨业务调用只调用对方 Service 公开方法。
 - `admin-dao` 定义 MyBatis-Plus Mapper；复杂 SQL 放在同名 Mapper XML 中。
 - `admin-entity` 映射数据库表，不直接作为接口请求或响应对象。
-- Service 不直接构造 MyBatis-Plus `Wrapper` 或编写 SQL；所有数据访问通过语义化 Mapper 方法完成，复杂查询放 Mapper XML。
-- DTO 放在 `admin-common/model/<业务>/dto`，VO 放在 `admin-common/model/<业务>/vo`，业务枚举放在 `admin-common/model/<业务>/enums`，Action 和 Service 共同使用。
-- DTO、VO 和其他数据对象使用传统 Java Bean，不使用 `record` 或 Lombok；对象字段必须使用中文注释说明用途。
+- 自定义类型应避免与 Spring、Swagger 等常用框架类型重名，优先使用语义清晰且不冲突的名称；除确有歧义且无法合理改名外，不在代码中反复使用全限定类名。统一接口响应类型命名为 `ApiResult`，Swagger 响应注解正常导入 `io.swagger.v3.oas.annotations.responses.ApiResponse`。
+- Service 不直接构造 MyBatis-Plus `Wrapper` 或编写 SQL；所有数据访问通过语义化 Mapper 方法完成。数据访问优先拆为单表查询；只有单表查询无法合理完成时才允许关联查询，单条关联查询最多涉及 3 张表，确实需要超过 3 张表时必须先向用户提出单独讨论，未经确认不得实现。
+- DTO 放在 `admin-common/model/<业务>/dto`，VO 放在 `admin-common/model/<业务>/vo`，业务枚举放在 `admin-common/model/<业务>/enums`，缓存对象等其他模型放在对应业务的语义子包，Action 和 Service 共同使用；其他模块不得自行建立 `model` 包或定义数据模型。
+- DTO、VO 和其他数据对象使用传统 Java Bean：普通 `class`、`private` 字段、公开无参构造和显式标准 Getter/Setter，不使用 `record` 或 Lombok；可根据实际用途增加带参构造器或链式 Setter，但不添加无必要写法。对象字段必须使用中文注释说明用途。
 - 业务枚举统一定义 `code`、`name` 字段：数据库持久化使用 `code`，中文展示使用 `name`。
 - Entity 只使用与数据库字段对应的原始 Java 类型，不直接引用业务枚举；状态等枚举转换由 Service 映射处理。
 - Entity 中数据库 `NOT NULL` 的数值字段使用 Java 基本类型，允许 `NULL` 的数值字段使用包装类型；DTO、VO 按接口可空语义定义。
@@ -179,12 +181,12 @@ admin-boot → admin-action → admin-service → admin-dao → admin-entity →
 ```
 
 - Maven 模块依赖只能沿上述方向，不允许反向依赖或跨层绕过。
-- `admin-common` 只放跨模块使用的基础类型，以及 `model/<业务>` 下的 DTO、VO 和业务枚举，禁止成为 `utils` 杂物模块。
+- `admin-common` 只放跨模块使用的基础类型，以及 `model/<业务>/<语义子包>` 下的全部共享模型，禁止成为 `utils` 杂物模块。
 - `admin-action` 只能调用 `admin-service`，不得直接调用 `admin-dao`。
-- `admin-service` 可以调用本业务或其他业务的 Service 接口；跨业务不得调用对方 Mapper。
+- `admin-service` 可以调用本业务或其他业务的具体 Service 公开方法；跨业务不得调用对方 Mapper。
 - `admin-dao` 只访问 `admin-entity`，不得依赖 Service 或 Action。
-- 系统与具体业务通过 `admin-service` 中的接口协作，因此不会形成 Maven 循环依赖。
-- 子包之间仍可能形成代码级循环；出现双向调用时应调整职责或使用中立的 Service 接口解耦，不得依赖 Spring `@Lazy` 掩盖问题。
+- 系统与具体业务通过 `admin-service` 中的公开方法协作，因此不会形成 Maven 循环依赖。
+- 子包之间仍可能形成代码级循环；出现双向调用时应调整职责或提取中立的 Service 能力解耦，不得依赖 Spring `@Lazy` 掩盖问题。
 - 各层的同一业务子包名称必须一致，便于从接口追踪到数据层。
 
 ## 5. 前端项目结构
@@ -409,7 +411,7 @@ CREATE TABLE t_resource_api (
 - 手机号和邮箱为空时必须写 `NULL`，不能写空字符串，否则唯一索引会把多个空字符串视为冲突。
 - 三张关联表使用自增 `id` 主键，并使用两列唯一索引防止重复授权；反向索引用于角色反查、资源删除检查和接口权限查询。
 - 删除员工、角色、资源或接口前由 Service 显式检查或删除关联记录，不依赖数据库级联删除。
-- Redis 只保存登录会话，不保存角色、资源或接口授权关系，也不新增数据库会话表。
+- Redis 保存登录会话和员工可访问接口路径缓存，不缓存角色、资源关联明细，也不新增数据库会话表；权限事实仍以数据库关系为准。
 
 ## 7. 授权模型
 
@@ -428,8 +430,10 @@ CREATE TABLE t_resource_api (
 → 会话有效：建立当前员工身份并将空闲过期时间续到 1 天
 → 命中仅登录路径白名单：登录有效后放行
 → 根据 Spring MVC 已匹配路由模板定位接口
-→ 查询当前员工的有效角色、资源及关联接口
-→ 存在当前接口且接口有效：放行
+→ 使用单次 Redis Lua 读取全局权限版本及员工权限缓存
+→ 缓存版本有效：直接判断当前路由模板，不访问数据库
+→ 缓存缺失或版本不一致：通过单表查询逐步获取启用角色、资源、有效父资源及全部启用接口路径并写回缓存
+→ 当前路由模板存在于员工启用接口路径集合：放行
 → 否则：返回 403
 ```
 
@@ -441,8 +445,14 @@ CREATE TABLE t_resource_api (
 - 除固定白名单外，所有 Controller 接口默认要求资源授权，不需要权限注解。
 - 接口未关联任何资源时，普通员工一律不能访问。
 - 禁用员工、角色、资源或接口后，权限立即失效。
-- 超级管理员可以绕过普通资源授权，但必须登录，且不能访问已禁用接口。
-- 基础版本不做权限缓存，直接查询数据库，优先保证一致性。
+- 超级管理员不查询普通资源关联，而是缓存全部启用接口路径；缓存重建以数据库 `t_employee.is_superuser` 为准，不信任登录会话中的旧标记；必须登录，且不能访问已禁用或未登记接口。
+- 权限缓存键为 `admin:permission:<employeeId>`，值为 `EmployeePermissionCache`，保存生成时的全局版本和可访问路由模板集合，TTL 为 1 天；不得使用 `Map`。
+- 全局版本键为 `admin:permission:version`，不存在时由 Lua 原子初始化为 `0`。缓存读取使用单次 Lua 同时比较缓存版本和全局版本；版本一致才命中，缓存命中时不得访问数据库或开启数据库事务。
+- 缓存缺失或版本不一致时才执行员工、员工角色、启用角色、角色资源、有效资源及父资源、资源接口、启用接口路径的单表查询，并一次性写回员工全部接口路径。重建前读取全局版本；重建期间版本发生变化时，旧版本缓存可正常写入，并在下一次读取时自动失效。同一员工使用 `admin:permission:rebuild-lock:<employeeId>` 的 10 秒 Redis 短期锁串行重建，持锁方二次读取缓存后才查数据库并使用 token 校验 Lua 释放锁；未持锁方只有限短轮询缓存，不得访问数据库，仍未命中时返回 `503`。
+- 接口同步以及员工状态或超级管理员标记、员工角色、角色状态、角色资源、资源状态或父级、资源接口关联、接口状态或路径发生实际变化后，必须调用 `PermissionService.invalidateAll()`。调用后立即写入无 TTL 的全局“权限失效处理中”标记，标记存在时鉴权返回 `503`；数据库事务成功提交后通过单次 Lua 原子递增全局版本并按 token 清除标记，明确回滚时只清除当前 token。提交后 Redis 失效操作失败或进程在标记后退出时保留标记，禁止通过 TTL 自动解除；后续 `invalidateAll()` 会在写入新 token 时恢复旧标记，显式接口同步命令即使数据库无变化也会执行恢复。任务 5 的所有相关写 Service 必须实现并测试该契约。
+- Redis Lua、版本与锁操作出现异常空结果，或权限缓存 JSON 缺少字段、字段类型错误、序列化或反序列化失败时，统一转换为认证基础设施异常并返回 `503`。普通缓存未命中使用明确 Lua 状态值，不与异常空结果混用。
+- 超级管理员标记同时存在于登录会话中；任务 5 修改该标记时，除递增权限版本外还必须调用 `SessionService.invalidateEmployeeSessions()` 使该员工全部旧会话失效。
+- Redis 权限缓存不可用时鉴权失败关闭并返回 `503`，不得降级为每请求查询数据库，也不得用 `403` 掩盖基础设施故障。
 
 角色授权树中，父节点半选只用于界面展示。数据库保存实际选中的资源；返回导航时根据已授权菜单向上补齐有效父目录，不能因父节点半选而授予整个子树。
 
@@ -473,8 +483,10 @@ public EmployeeVO create(@Valid @RequestBody EmployeeCreateDTO request) {
 - 数据库存在但代码已删除的接口状态改为 `DISABLED`。
 - 同步命令可重复执行，不产生重复数据。
 - 每个路径只能对应一个 Handler；即使 HTTP 方法不同，重复路径也必须使同步失败。
+- 每个受保护 Handler 必须恰好声明一个 HTTP Method；未声明 Method 或同时声明多个 Method 都必须使同步失败。
 - 同步过程不得自动重新启用已禁用接口；公开和仅登录白名单中的 Handler 不写入接口目录。
 - `t_resource_api` 由管理端维护，同步过程不得自动授予权限。
+- 同步产生新增、元数据更新或旧路径禁用等实际写入并成功提交事务后，原子递增全局权限版本；无实际变化或事务回滚时不递增。
 
 ## 9. 登录与安全
 
@@ -491,7 +503,7 @@ public EmployeeVO create(@Valid @RequestBody EmployeeCreateDTO request) {
 - 服务端不创建 HTTP Session。
 - 由于 Cookie 会由浏览器自动携带，新增、修改和删除等非安全请求必须校验 `Origin` 是否等于配置的前端来源；缺少 `Origin` 时校验 `Referer`，两者均无法确认来源时拒绝请求。
 - 基础版本不增加第二个 CSRF Token；CSRF 防护依赖 `SameSite`、严格的来源校验和 CORS 白名单共同完成。
-- 权限不写入 Redis 会话，每次按数据库中的有效员工、角色、资源和接口关系判断，保证授权变化立即生效。
+- 权限不写入登录会话；独立员工权限缓存通过全局版本统一失效，版本失效后按数据库中的有效员工、角色、资源和接口关系重建。
 - 员工禁用、删除或密码重置时，必须主动删除该员工的全部 Redis 会话；退出登录删除当前会话。
 - Redis 不可用时登录和受保护接口失败关闭，返回服务不可用，不得绕过认证或降级为内存会话。
 - 登录失败统一返回“用户名或密码错误”。
@@ -529,13 +541,13 @@ public EmployeeVO create(@Valid @RequestBody EmployeeCreateDTO request) {
 
 ```json
 {
-  "code": "EMPLOYEE_USERNAME_EXISTS",
-  "message": "用户名已存在",
+  "code": 1003,
+  "message": "无权访问该接口",
   "details": null
 }
 ```
 
-`@RestControllerAdvice` 统一转换参数校验、业务异常和系统异常。HTTP 状态码约定：
+统一响应和业务异常使用 `ExceptionCode` 枚举；`code` 是全局唯一数字，`name` 是中文默认消息。需要携带路径等上下文时允许覆盖响应消息，但不得散落字符串错误码。`@RestControllerAdvice` 统一转换参数校验、业务异常和系统异常。HTTP 状态码约定：
 
 - `400`：违反业务规则
 - `401`：未登录或登录态失效
@@ -612,7 +624,7 @@ Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenA
 
 - 事务边界统一放在 Service 实现方法，使用 `@Transactional`。
 - Controller 和 Mapper 不开启业务事务。
-- 简单单表查询优先在 Mapper 默认方法中使用 MyBatis-Plus，复杂查询和联表查询放 Mapper XML；Service 不构造查询 Wrapper。
+- 简单单表查询优先在 Mapper 默认方法中使用 MyBatis-Plus；只有单表查询无法合理完成时才使用 Mapper XML 关联查询，单条关联查询最多涉及 3 张表，超过时必须先单独评审；Service 不构造查询 Wrapper。
 - 多表授权保存和初始化必须在单事务内完成。
 - 唯一性最终由数据库唯一索引保证，Service 的预检查只用于返回友好错误。
 - 非必要不使用 `SELECT ... FOR UPDATE` 等数据库行锁。只有存在明确的并发一致性要求且普通事务、唯一索引或条件更新无法满足时才使用，并说明锁定范围和事务边界；禁止在持有数据库行锁期间调用 Redis、HTTP 等外部服务。
@@ -664,11 +676,11 @@ Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenA
 以后增加订单等业务时：
 
 1. 在 `admin-common/model`、`admin-entity`、`admin-dao`、`admin-service` 和 `admin-action` 中分别创建同名业务子包，例如 `order`。
-2. DTO 放入 `admin-common/model/order/dto`，VO 放入 `admin-common/model/order/vo`，业务枚举放入 `admin-common/model/order/enums`；实体放入 `admin-entity/order`，Mapper 放入 `admin-dao/order`，业务服务放入 `admin-service/order`，Web 接口放入 `admin-action/order`。
+2. DTO 放入 `admin-common/model/order/dto`，VO 放入 `admin-common/model/order/vo`，业务枚举放入 `admin-common/model/order/enums`，缓存对象等其他共享模型放入对应语义子包；实体放入 `admin-entity/order`，Mapper 放入 `admin-dao/order`，业务服务放入 `admin-service/order`，Web 接口放入 `admin-action/controller/order`。
 3. 在 `backend/sql/` 增加按日期和序号命名的人工执行 SQL，不得修改已执行脚本。
 4. 为每个 Controller 接口声明稳定路由，并使用 OpenAPI 注解维护接口名称和描述。
 5. 执行接口同步，在资源管理中创建业务菜单和按钮并关联接口。
 6. 在角色管理中授权业务资源。
 7. 在前端 `app/(admin)/business` 和 `features/business` 下创建对应功能。
 
-新增业务不得修改通用鉴权算法。`admin-common/model/<业务>` 只允许增加 `dto`、`vo`、`enums` 子包，不得放入业务实现；`admin-boot` 不得放入具体业务代码。跨业务调用必须通过 `admin-service` 中的 Service 接口，不得直接访问其他业务子包的 Mapper 和数据表。
+新增业务不得修改通用鉴权算法。所有跨模块共享模型必须放在 `admin-common/model/<业务>/<语义子包>`，其中可按需要增加 `dto`、`vo`、`enums`、`cache` 等子包，但不得放入业务实现；`admin-boot` 不得放入具体业务代码。跨业务调用必须通过 `admin-service` 中具体 Service 的公开方法，不得直接访问其他业务子包的 Mapper 和数据表。

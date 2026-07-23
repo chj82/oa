@@ -2,6 +2,7 @@ package com.oa.boot.security;
 
 import com.oa.common.constant.AuthenticationConstants;
 import com.oa.common.exception.AuthenticationInfrastructureException;
+import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.cache.LoginSessionCache;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
 import com.oa.service.system.SessionService;
@@ -13,7 +14,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -21,8 +21,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /** 从 HttpOnly Cookie 恢复登录员工的认证过滤器。 */
 @Component
 public class TokenAuthenticationFilter extends OncePerRequestFilter {
-  private static final Set<String> PUBLIC_PATHS = Set.of("/api/auth/login", "/error");
-
   private final SessionService sessionService;
   private final String frontendOrigin;
 
@@ -42,27 +40,27 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
       return;
     }
     if (requiresOriginCheck(request) && !hasTrustedOrigin(request)) {
-      writeError(response, 403, "INVALID_REQUEST_ORIGIN", "请求来源不可信");
+      writeError(response, 403, ExceptionCode.INVALID_REQUEST_ORIGIN);
       return;
     }
-    if (isPublicPath(request.getRequestURI())) {
+    if (SecurityPathRules.isPublicPath(request.getRequestURI())) {
       filterChain.doFilter(request, response);
       return;
     }
     String token = cookieToken(request);
     if (token == null) {
-      writeError(response, 401, "UNAUTHORIZED", "未登录或登录态已失效");
+      writeError(response, 401, ExceptionCode.UNAUTHORIZED);
       return;
     }
     LoginSessionCache session;
     try {
       session = sessionService.getAndRefresh(token);
     } catch (AuthenticationInfrastructureException exception) {
-      writeError(response, 503, "AUTH_INFRASTRUCTURE_UNAVAILABLE", "认证服务暂不可用");
+      writeError(response, 503, ExceptionCode.AUTH_INFRASTRUCTURE_UNAVAILABLE);
       return;
     }
     if (session == null) {
-      writeError(response, 401, "UNAUTHORIZED", "未登录或登录态已失效");
+      writeError(response, 401, ExceptionCode.UNAUTHORIZED);
       return;
     }
     request.setAttribute(
@@ -82,15 +80,6 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
     employee.setSuperuser(session.getSuperuser());
     employee.setResources(List.of());
     return employee;
-  }
-
-  private boolean isPublicPath(String path) {
-    return PUBLIC_PATHS.contains(path)
-        || "/swagger-ui.html".equals(path)
-        || "/swagger-ui".equals(path)
-        || path.startsWith("/swagger-ui/")
-        || "/v3/api-docs".equals(path)
-        || path.startsWith("/v3/api-docs/");
   }
 
   private boolean requiresOriginCheck(HttpServletRequest request) {
@@ -119,13 +108,18 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
     return null;
   }
 
-  private void writeError(HttpServletResponse response, int status, String code, String message)
+  private void writeError(HttpServletResponse response, int status, ExceptionCode exceptionCode)
       throws IOException {
     response.setStatus(status);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());
     response.setContentType("application/json");
     response
         .getWriter()
-        .write("{\"code\":\"" + code + "\",\"message\":\"" + message + "\",\"details\":null}");
+        .write(
+            "{\"code\":"
+                + exceptionCode.getCode()
+                + ",\"message\":\""
+                + exceptionCode.getName()
+                + "\",\"details\":null}");
   }
 }

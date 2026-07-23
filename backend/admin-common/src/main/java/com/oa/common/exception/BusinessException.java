@@ -1,17 +1,24 @@
 package com.oa.common.exception;
 
+import com.oa.common.model.common.enums.ExceptionCode;
+
 /** 可转换为明确业务响应的异常。 */
 public class BusinessException extends RuntimeException {
-  /** 业务错误码。 */
-  private final String code;
+  /** 统一异常码。 */
+  private final ExceptionCode exceptionCode;
 
-  /** 使用业务错误码和消息创建异常。 */
-  public BusinessException(String code, String message) {
-    super(message);
-    this.code = code;
+  /** 使用统一异常码的默认名称创建异常。 */
+  public BusinessException(ExceptionCode exceptionCode) {
+    this(exceptionCode, exceptionCode.getName());
   }
 
-  public String getCode() {
-    return code;
+  /** 使用统一异常码和自定义消息创建异常。 */
+  public BusinessException(ExceptionCode exceptionCode, String message) {
+    super(message);
+    this.exceptionCode = exceptionCode;
+  }
+
+  public ExceptionCode getExceptionCode() {
+    return exceptionCode;
   }
 }

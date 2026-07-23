@@ -1,6 +1,7 @@
 package com.oa.service.system;
 
 import com.oa.common.exception.BusinessException;
+import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.cache.LoginSessionCache;
 import com.oa.common.model.system.dto.LoginDTO;
 import com.oa.common.model.system.enums.SystemStatus;
@@ -31,7 +32,7 @@ public class AuthService {
     if (employee == null
         || employee.getStatus() != SystemStatus.ENABLED.getCode()
         || !passwordEncoder.matches(login.getPassword(), employee.getPasswordHash())) {
-      throw new BusinessException("INVALID_CREDENTIALS", "用户名或密码错误");
+      throw new BusinessException(ExceptionCode.INVALID_CREDENTIALS);
     }
     LoginSessionCache session = new LoginSessionCache();
     session.setEmployeeId(employee.getId());

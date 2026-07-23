@@ -17,8 +17,10 @@ import com.oa.boot.advice.GlobalExceptionHandler;
 import com.oa.common.constant.AuthenticationConstants;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.exception.BusinessException;
+import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.dto.LoginDTO;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
+import com.oa.common.response.ApiResult;
 import com.oa.service.system.AuthService;
 import com.oa.service.system.SessionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -60,7 +63,7 @@ class AuthControllerTest {
         .andExpect(cookie().path("ADMIN_TOKEN", "/"))
         .andExpect(cookie().secure("ADMIN_TOKEN", false))
         .andExpect(header().string("Set-Cookie", containsString("SameSite=Lax")))
-        .andExpect(jsonPath("$.code").value("SUCCESS"))
+        .andExpect(jsonPath("$.code").value(ExceptionCode.SUCCESS.getCode()))
         .andExpect(jsonPath("$.details").value(nullValue()))
         .andExpect(content().string(org.hamcrest.Matchers.not(containsString("secret-token"))));
   }
@@ -77,13 +80,14 @@ class AuthControllerTest {
                 .content("{\"username\":\"user\",\"password\":\"password\"}"))
         .andExpect(status().isServiceUnavailable())
         .andExpect(cookie().doesNotExist("ADMIN_TOKEN"))
-        .andExpect(jsonPath("$.code").value("AUTH_INFRASTRUCTURE_UNAVAILABLE"));
+        .andExpect(
+            jsonPath("$.code").value(ExceptionCode.AUTH_INFRASTRUCTURE_UNAVAILABLE.getCode()));
   }
 
   @Test
   void 错误凭据返回400统一业务响应() throws Exception {
     when(authService.login(org.mockito.ArgumentMatchers.any(LoginDTO.class)))
-        .thenThrow(new BusinessException("INVALID_CREDENTIALS", "用户名或密码错误"));
+        .thenThrow(new BusinessException(ExceptionCode.INVALID_CREDENTIALS));
 
     mockMvc
         .perform(
@@ -91,7 +95,7 @@ class AuthControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"username\":\"user\",\"password\":\"wrong\"}"))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
+        .andExpect(jsonPath("$.code").value(ExceptionCode.INVALID_CREDENTIALS.getCode()))
         .andExpect(jsonPath("$.message").value("用户名或密码错误"))
         .andExpect(jsonPath("$.details").value(nullValue()));
   }
@@ -104,7 +108,7 @@ class AuthControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"username\":\"\",\"password\":\"\"}"))
         .andExpect(status().isUnprocessableEntity())
-        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        .andExpect(jsonPath("$.code").value(ExceptionCode.VALIDATION_FAILED.getCode()));
   }
 
   @Test
@@ -118,7 +122,8 @@ class AuthControllerTest {
             post("/api/auth/logout")
                 .cookie(new jakarta.servlet.http.Cookie("ADMIN_TOKEN", "token")))
         .andExpect(status().isServiceUnavailable())
-        .andExpect(jsonPath("$.code").value("AUTH_INFRASTRUCTURE_UNAVAILABLE"));
+        .andExpect(
+            jsonPath("$.code").value(ExceptionCode.AUTH_INFRASTRUCTURE_UNAVAILABLE.getCode()));
   }
 
   @Test
@@ -166,12 +171,12 @@ class AuthControllerTest {
 
   @Test
   void 普通数据访问异常返回通用基础设施错误码() {
-    org.springframework.http.ResponseEntity<com.oa.common.response.ApiResponse<Void>> response =
+    ResponseEntity<ApiResult<Void>> response =
         new GlobalExceptionHandler()
             .handleInfrastructure(new DataAccessResourceFailureException("database unavailable"));
 
     org.junit.jupiter.api.Assertions.assertEquals(503, response.getStatusCode().value());
     org.junit.jupiter.api.Assertions.assertEquals(
-        "INFRASTRUCTURE_UNAVAILABLE", response.getBody().getCode());
+        ExceptionCode.INFRASTRUCTURE_UNAVAILABLE.getCode(), response.getBody().getCode());
   }
 }

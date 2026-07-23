@@ -56,15 +56,21 @@
 
 **文件：**
 - 创建：`backend/admin-service/src/main/java/com/oa/service/system/SystemApiService.java`
-- 创建：`backend/admin-action/src/main/java/com/oa/action/security/ResourceApiAuthorizationInterceptor.java`
+- 创建：`backend/admin-service/src/main/java/com/oa/service/system/PermissionService.java`
+- 创建：`backend/admin-service/src/main/java/com/oa/service/system/store/StringRedisPermissionStore.java`
+- 创建：`backend/admin-common/src/main/java/com/oa/common/model/system/cache/EmployeePermissionCache.java`
+- 创建：`backend/admin-boot/src/main/java/com/oa/boot/security/ResourceApiAuthorizationInterceptor.java`
 - 创建：`backend/admin-boot/src/main/java/com/oa/boot/command/SyncApisRunner.java`
-- 创建：`backend/admin-dao/src/main/resources/mapper/system/PermissionMapper.xml`
+- 修改：`backend/admin-dao/src/main/java/com/oa/dao/system/*Mapper.java`
 
 - [ ] 测试按 Spring MVC 路由模板同步 `name/path/description/status`。
 - [ ] 测试重复路径同步失败，移除路径只禁用、不删除关联。
+- [ ] 测试单个受保护 Handler 必须恰好声明一个 HTTP Method，未声明或同时声明多个 Method 时同步失败。
 - [ ] 测试无资源关联返回 403，多角色权限取并集。
 - [ ] 测试超级管理员只绕过资源关联，不绕过禁用接口。
 - [ ] 实现路径白名单、登录白名单和资源接口鉴权。
+- [ ] 测试权限缓存命中时不访问 Mapper 或开启数据库事务，缓存缺失或版本不一致时按单表链重建。
+- [ ] 测试权限缓存使用一天 TTL、单次 Lua 版本校验和原子全局版本递增，Redis 故障返回 503。
 
 ### 任务 5：系统管理服务与接口
 
@@ -76,6 +82,8 @@
 - [ ] 实现分页、详情、新增、修改、启停、删除和关联保存。
 - [ ] 实现部门与资源树的环路、层级和删除约束。
 - [ ] 实现员工角色、角色资源、资源接口的事务保存。
+- [ ] 员工、角色、资源、接口及其关联发生权限相关变化后，调用 `PermissionService.invalidateAll()` 在数据库事务成功提交后递增全局权限版本。
+- [ ] 修改员工超级管理员标记时，同时调用 `SessionService.invalidateEmployeeSessions`，避免旧会话继续使用变更前身份。
 - [ ] 员工禁用、删除和密码重置必须调用 `SessionService.invalidateEmployeeSessions`，并测试全部登录会话立即失效。
 - [ ] 为所有接口补齐 OpenAPI 文档。
 - [ ] 运行后端全量测试。

@@ -49,6 +49,37 @@ class AuthenticationStructureTest {
     }
   }
 
+  @Test
+  void 数据模型统一放在AdminCommon语义子包() throws IOException {
+    try (var paths = Files.walk(serviceSourceRoot())) {
+      assertFalse(
+          paths
+              .filter(Files::isDirectory)
+              .anyMatch(path -> path.toString().replace('\\', '/').contains("/model/")),
+          "admin-service 主源码不得定义 model 包");
+    }
+
+    Path definitionPath =
+        commonSourceRoot().resolve("com/oa/common/model/system/dto/SystemApiDefinitionDTO.java");
+    assertTrue(Files.isRegularFile(definitionPath), "接口扫描定义 DTO 必须放在 admin-common");
+    String source = Files.readString(definitionPath);
+    assertTrue(source.contains("public class SystemApiDefinitionDTO"));
+    assertTrue(source.contains("public SystemApiDefinitionDTO()"));
+    assertFalse(source.contains("rec" + "ord "));
+    assertFalse(source.contains("lombok"));
+    for (String field : List.of("name", "path", "description")) {
+      assertTrue(
+          source.matches(
+              "(?s).*/\\*\\*[^*]*[\\u4e00-\\u9fa5][^*]*\\*/\\s+private [^;]+ " + field + ";.*"));
+      assertTrue(
+          source.contains(
+              "get" + Character.toUpperCase(field.charAt(0)) + field.substring(1) + "()"));
+      assertTrue(
+          source.contains(
+              "set" + Character.toUpperCase(field.charAt(0)) + field.substring(1) + "("));
+    }
+  }
+
   private String readJavaSources(Path root) throws IOException {
     StringBuilder source = new StringBuilder();
     try (var files = Files.walk(root)) {

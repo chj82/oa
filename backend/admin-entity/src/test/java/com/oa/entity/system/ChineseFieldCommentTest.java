@@ -6,7 +6,7 @@ import com.oa.common.exception.BusinessException;
 import com.oa.common.model.system.dto.*;
 import com.oa.common.model.system.enums.*;
 import com.oa.common.model.system.vo.*;
-import com.oa.common.response.ApiResponse;
+import com.oa.common.response.ApiResult;
 import com.oa.common.response.PageQuery;
 import com.oa.common.response.PageResult;
 import java.lang.reflect.Modifier;
@@ -25,7 +25,7 @@ class ChineseFieldCommentTest {
     List<Class<?>> types =
         List.of(
             BusinessException.class,
-            ApiResponse.class,
+            ApiResult.class,
             PageQuery.class,
             PageResult.class,
             SystemStatus.class,
@@ -37,6 +37,7 @@ class ChineseFieldCommentTest {
             RoleSaveDTO.class,
             ResourceSaveDTO.class,
             RelationIdsDTO.class,
+            SystemApiDefinitionDTO.class,
             EmployeeVO.class,
             DepartmentVO.class,
             RoleVO.class,

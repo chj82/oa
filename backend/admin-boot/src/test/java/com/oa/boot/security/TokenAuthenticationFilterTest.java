@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.oa.common.constant.AuthenticationConstants;
 import com.oa.common.exception.AuthenticationInfrastructureException;
+import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.cache.LoginSessionCache;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
 import com.oa.service.system.SessionService;
@@ -97,6 +98,11 @@ class TokenAuthenticationFilterTest {
     filter.doFilter(request, response, chain);
 
     assertEquals(401, response.getStatus());
+    assertEquals(
+        "{\"code\":"
+            + ExceptionCode.UNAUTHORIZED.getCode()
+            + ",\"message\":\"未登录或登录态已失效\",\"details\":null}",
+        response.getContentAsString());
     verify(chain, never()).doFilter(request, response);
   }
 
@@ -149,6 +155,11 @@ class TokenAuthenticationFilterTest {
     filter.doFilter(request, response, chain);
 
     assertEquals(503, response.getStatus());
+    assertEquals(
+        "{\"code\":"
+            + ExceptionCode.AUTH_INFRASTRUCTURE_UNAVAILABLE.getCode()
+            + ",\"message\":\"认证服务暂不可用\",\"details\":null}",
+        response.getContentAsString());
     verify(chain, never()).doFilter(request, response);
   }
 

@@ -3,10 +3,11 @@ package com.oa.action.controller.system;
 import com.oa.common.constant.AuthenticationConstants;
 import com.oa.common.model.system.dto.LoginDTO;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
-import com.oa.common.response.ApiResponse;
+import com.oa.common.response.ApiResult;
 import com.oa.service.system.AuthService;
 import com.oa.service.system.SessionService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,38 +41,32 @@ public class AuthController {
   }
 
   @Operation(summary = "登录", description = "校验用户名密码并通过 HttpOnly Cookie 建立会话")
-  @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "登录成功")
-  @io.swagger.v3.oas.annotations.responses.ApiResponse(
-      responseCode = "400",
-      description = "用户名或密码错误")
-  @io.swagger.v3.oas.annotations.responses.ApiResponse(
-      responseCode = "503",
-      description = "认证服务不可用")
+  @ApiResponse(responseCode = "200", description = "登录成功")
+  @ApiResponse(responseCode = "400", description = "用户名或密码错误")
+  @ApiResponse(responseCode = "503", description = "认证服务不可用")
   @PostMapping("/login")
-  public ApiResponse<Void> login(@Valid @RequestBody LoginDTO login, HttpServletResponse response) {
+  public ApiResult<Void> login(@Valid @RequestBody LoginDTO login, HttpServletResponse response) {
     String token = authService.login(login);
     response.addHeader(HttpHeaders.SET_COOKIE, cookie(token, -1).toString());
-    return ApiResponse.success(null);
+    return ApiResult.success(null);
   }
 
   @Operation(summary = "退出登录", description = "删除当前 Cookie 对应的服务端会话")
-  @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "退出成功")
+  @ApiResponse(responseCode = "200", description = "退出成功")
   @PostMapping("/logout")
-  public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+  public ApiResult<Void> logout(HttpServletRequest request, HttpServletResponse response) {
     String token = cookieToken(request);
     sessionService.removeSession(token);
     response.addHeader(HttpHeaders.SET_COOKIE, cookie("", 0).toString());
-    return ApiResponse.success(null);
+    return ApiResult.success(null);
   }
 
   @Operation(summary = "获取当前员工", description = "返回当前有效登录会话中的最小员工信息")
-  @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "获取成功")
-  @io.swagger.v3.oas.annotations.responses.ApiResponse(
-      responseCode = "401",
-      description = "未登录或会话失效")
+  @ApiResponse(responseCode = "200", description = "获取成功")
+  @ApiResponse(responseCode = "401", description = "未登录或会话失效")
   @GetMapping("/current")
-  public ApiResponse<CurrentEmployeeVO> current(HttpServletRequest request) {
-    return ApiResponse.success(
+  public ApiResult<CurrentEmployeeVO> current(HttpServletRequest request) {
+    return ApiResult.success(
         (CurrentEmployeeVO)
             request.getAttribute(AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE));
   }
