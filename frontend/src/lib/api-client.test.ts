@@ -1,0 +1,63 @@
+import { ApiClientError, apiRequest } from "@/lib/api-client";
+
+describe("apiRequest", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("默认携带 Cookie 并解析成功响应", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: 0, message: "成功", details: { id: 1 } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiRequest<{ id: number }>("/api/auth/current")).resolves.toEqual({ id: 1 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/auth/current"),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("浏览器收到 401 时跳转登录页", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+
+    await expect(apiRequest("/api/auth/current")).rejects.toBeInstanceOf(ApiClientError);
+    expect(window.location.pathname).toBe("/login");
+  });
+
+  it("非 2xx 响应抛出包含服务端信息的错误", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: 4220, message: "参数错误", details: null }), {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(apiRequest("/api/test")).rejects.toMatchObject({
+      code: 4220,
+      message: "参数错误",
+      status: 422,
+    });
+  });
+
+  it("HTTP 成功但业务 code 非 0 时抛出业务错误", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: 1001, message: "登录失败", details: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(apiRequest("/api/auth/login")).rejects.toMatchObject({
+      code: 1001,
+      message: "登录失败",
+    });
+  });
+});

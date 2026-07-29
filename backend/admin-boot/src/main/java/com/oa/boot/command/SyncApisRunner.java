@@ -66,9 +66,38 @@ public class SyncApisRunner implements ApplicationRunner {
     }
 
     SystemApiDefinitionDTO definition = new SystemApiDefinitionDTO();
-    definition.setName(operation.summary());
+    definition.setName(operation.summary() == null ? null : operation.summary().strip());
     definition.setPath(path);
-    definition.setDescription(operation.description());
+    definition.setDescription(
+        operation.description() == null || operation.description().isBlank()
+            ? null
+            : operation.description().strip());
+    validateDefinition(definition, handlerMethod);
     return definition;
+  }
+
+  private void validateDefinition(SystemApiDefinitionDTO definition, HandlerMethod handlerMethod) {
+    boolean invalidName = definition.getName() == null || definition.getName().isBlank();
+    boolean invalidPath = definition.getPath() == null || definition.getPath().isBlank();
+    boolean invalidDescription =
+        definition.getDescription() != null && definition.getDescription().length() > 500;
+    if (invalidName
+        || (!invalidName && definition.getName().length() > 100)
+        || invalidPath
+        || (!invalidPath && definition.getPath().length() > 255)
+        || invalidDescription) {
+      throw new BusinessException(
+          ExceptionCode.SYSTEM_API_DEFINITION_INVALID,
+          "系统接口定义无效：" + handlerName(handlerMethod) + "，路径：" + definition.getPath());
+    }
+  }
+
+  private String handlerName(HandlerMethod handlerMethod) {
+    if (handlerMethod.getMethod() == null) {
+      return "未知Handler";
+    }
+    return handlerMethod.getMethod().getDeclaringClass().getSimpleName()
+        + "#"
+        + handlerMethod.getMethod().getName();
   }
 }

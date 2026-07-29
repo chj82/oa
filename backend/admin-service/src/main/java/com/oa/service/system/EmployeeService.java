@@ -3,8 +3,9 @@ package com.oa.service.system;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.oa.common.exception.BusinessException;
 import com.oa.common.model.common.enums.ExceptionCode;
+import com.oa.common.model.system.dto.EmployeeCreateDTO;
 import com.oa.common.model.system.dto.EmployeeQueryDTO;
-import com.oa.common.model.system.dto.EmployeeSaveDTO;
+import com.oa.common.model.system.dto.EmployeeUpdateDTO;
 import com.oa.common.model.system.enums.SystemStatus;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
 import com.oa.common.model.system.vo.EmployeeVO;
@@ -15,11 +16,15 @@ import com.oa.dao.system.EmployeeRoleMapper;
 import com.oa.dao.system.RoleMapper;
 import com.oa.entity.system.DepartmentEntity;
 import com.oa.entity.system.EmployeeEntity;
+import com.oa.entity.system.EmployeeRoleEntity;
+import com.oa.entity.system.RoleEntity;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +34,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 /** 员工管理服务。 */
 @Service
 public class EmployeeService {
+  private static final int BCRYPT_MAX_PASSWORD_BYTES = 72;
+  private static final int RELATION_BATCH_SIZE = 500;
+  private static final String USERNAME_UNIQUE_INDEX = "udx_employee_username";
+  private static final String PHONE_UNIQUE_INDEX = "udx_employee_phone";
+  private static final String EMAIL_UNIQUE_INDEX = "udx_employee_email";
+
   private final EmployeeMapper employeeMapper;
   private final DepartmentMapper departmentMapper;
   private final EmployeeRoleMapper employeeRoleMapper;
@@ -70,45 +81,74 @@ public class EmployeeService {
     return toVO(requiredEmployee(employeeId));
   }
 
+  /** 查询员工已分配的角色ID。 */
+  public List<Long> roleIds(long employeeId) {
+    requiredEmployee(employeeId);
+    return employeeRoleMapper.selectRoleIdsByEmployeeId(employeeId);
+  }
+
   /** 新增员工。 */
   @Transactional
-  public EmployeeVO create(EmployeeSaveDTO request) {
+  public EmployeeVO create(EmployeeCreateDTO request) {
     if (isBlank(request.getPassword())) {
       throw new BusinessException(ExceptionCode.EMPLOYEE_PASSWORD_REQUIRED);
     }
-    validateDepartment(request.getDepartmentId());
-    validateUnique(request, null);
+    validatePasswordLength(request.getPassword());
+    lockAvailableDepartment(request.getDepartmentId());
+    validateUnique(request.getUsername(), request.getPhone(), request.getEmail(), null);
     LocalDateTime now = LocalDateTime.now();
     EmployeeEntity employee = new EmployeeEntity();
-    copyEditableFields(request, employee);
+    copyEditableFields(
+        request.getUsername(),
+        request.getName(),
+        request.getPhone(),
+        request.getEmail(),
+        request.getDepartmentId(),
+        request.getStatus(),
+        request.getSuperuser(),
+        employee);
     employee.setPasswordHash(passwordEncoder.encode(request.getPassword()));
     employee.setCreatedAt(now);
     employee.setUpdatedAt(now);
-    employeeMapper.insert(employee);
-    if (employee.getStatus() == SystemStatus.DISABLED.getCode() || employee.getSuperuser() == 1) {
-      permissionService.invalidateAll();
-    }
+    insertEmployee(employee);
     return toVO(employee);
   }
 
   /** 修改员工基本信息。 */
   @Transactional
-  public EmployeeVO update(EmployeeSaveDTO request, CurrentEmployeeVO currentEmployee) {
+  public EmployeeVO update(EmployeeUpdateDTO request, CurrentEmployeeVO currentEmployee) {
     EmployeeEntity employee = requiredEmployee(request.getId());
     boolean superuserChanged = employee.getSuperuser() != (request.getSuperuser() ? 1 : 0);
-    if (isSelfNormalEmployee(employee.getId(), currentEmployee) && superuserChanged) {
+    boolean statusChanged = employee.getStatus() != request.getStatus().getCode();
+    int expectedStatus = employee.getStatus();
+    int expectedSuperuser = employee.getSuperuser();
+    if (isSelfNormalEmployee(employee.getId(), currentEmployee)
+        && (superuserChanged || statusChanged)) {
       throw new BusinessException(ExceptionCode.EMPLOYEE_SELF_OPERATION_FORBIDDEN);
     }
-    validateDepartment(request.getDepartmentId());
-    validateUnique(request, employee.getId());
-    copyEditableFields(request, employee);
-    if (!isBlank(request.getPassword())) {
-      employee.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    if (employee.getSuperuser() == 1 && request.getStatus() == SystemStatus.DISABLED) {
+      throw new BusinessException(ExceptionCode.EMPLOYEE_SUPERUSER_PROTECTED);
     }
-    employee.setUpdatedAt(LocalDateTime.now());
-    employeeMapper.updateById(employee);
-    if (superuserChanged) {
+    if (employee.getSuperuser() == 1 && !request.getSuperuser()) {
+      throw new BusinessException(ExceptionCode.EMPLOYEE_SUPERUSER_DEMOTION_FORBIDDEN);
+    }
+    if (superuserChanged || statusChanged) {
       permissionService.invalidateAll();
+    }
+    lockAvailableDepartment(request.getDepartmentId());
+    validateUnique(request.getUsername(), request.getPhone(), request.getEmail(), employee.getId());
+    copyEditableFields(
+        request.getUsername(),
+        request.getName(),
+        request.getPhone(),
+        request.getEmail(),
+        request.getDepartmentId(),
+        request.getStatus(),
+        request.getSuperuser(),
+        employee);
+    employee.setUpdatedAt(LocalDateTime.now());
+    updateEmployeeBySnapshot(employee, expectedStatus, expectedSuperuser);
+    if (superuserChanged || (statusChanged && request.getStatus() == SystemStatus.DISABLED)) {
       invalidateSessionsAfterCommit(employee.getId());
     }
     return toVO(employee);
@@ -126,12 +166,15 @@ public class EmployeeService {
       throw new BusinessException(ExceptionCode.EMPLOYEE_SUPERUSER_PROTECTED);
     }
     if (employee.getStatus() == status.getCode()) {
+      requireCurrentSnapshot(employee);
       return;
     }
+    int expectedStatus = employee.getStatus();
+    int expectedSuperuser = employee.getSuperuser();
     employee.setStatus(status.getCode());
     employee.setUpdatedAt(LocalDateTime.now());
-    employeeMapper.updateById(employee);
     permissionService.invalidateAll();
+    updateEmployeeBySnapshot(employee, expectedStatus, expectedSuperuser);
     if (status == SystemStatus.DISABLED) {
       invalidateSessionsAfterCommit(employeeId);
     }
@@ -139,62 +182,101 @@ public class EmployeeService {
 
   /** 删除员工及其角色关联。 */
   @Transactional
-  public void delete(long employeeId) {
-    EmployeeEntity employee = requiredEmployee(employeeId);
+  public void delete(long employeeId, long operatorId) {
+    if (employeeId == operatorId) {
+      throw new BusinessException(ExceptionCode.EMPLOYEE_SELF_DELETE_FORBIDDEN);
+    }
+    permissionService.invalidateAll();
+    EmployeeEntity employee = employeeMapper.selectByIdForUpdate(employeeId);
+    if (employee == null) {
+      throw new BusinessException(ExceptionCode.EMPLOYEE_NOT_FOUND);
+    }
     if (employee.getSuperuser() == 1) {
       throw new BusinessException(ExceptionCode.EMPLOYEE_SUPERUSER_PROTECTED);
     }
     employeeRoleMapper.deleteByEmployeeId(employeeId);
     employeeMapper.deleteById(employeeId);
-    permissionService.invalidateAll();
     invalidateSessionsAfterCommit(employeeId);
   }
 
   /** 重置员工登录密码。 */
   @Transactional
   public void resetPassword(long employeeId, String password) {
+    validatePasswordLength(password);
     EmployeeEntity employee = requiredEmployee(employeeId);
     employee.setPasswordHash(passwordEncoder.encode(password));
     employee.setUpdatedAt(LocalDateTime.now());
-    employeeMapper.updateById(employee);
+    updateEmployee(employee);
     invalidateSessionsAfterCommit(employeeId);
   }
 
   /** 全量保存员工角色，空列表表示清空。 */
   @Transactional
   public void saveRoles(long employeeId, List<Long> roleIds, CurrentEmployeeVO currentEmployee) {
-    requiredEmployee(employeeId);
     if (isSelfNormalEmployee(employeeId, currentEmployee)) {
       throw new BusinessException(ExceptionCode.EMPLOYEE_SELF_OPERATION_FORBIDDEN);
     }
-    List<Long> distinctRoleIds = new LinkedHashSet<>(roleIds).stream().toList();
-    Set<Long> enabledRoleIds = new LinkedHashSet<>(roleMapper.selectEnabledIds(distinctRoleIds));
+    List<Long> distinctRoleIds = new LinkedHashSet<>(roleIds).stream().sorted().toList();
+    permissionService.invalidateAll();
+    if (employeeMapper.selectByIdForUpdate(employeeId) == null) {
+      throw new BusinessException(ExceptionCode.EMPLOYEE_NOT_FOUND);
+    }
+    List<RoleEntity> lockedRoles =
+        distinctRoleIds.isEmpty() ? List.of() : roleMapper.selectByIdsForUpdate(distinctRoleIds);
+    Set<Long> enabledRoleIds =
+        lockedRoles.stream()
+            .filter(role -> role.getStatus() == SystemStatus.ENABLED.getCode())
+            .map(RoleEntity::getId)
+            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     if (!enabledRoleIds.equals(new LinkedHashSet<>(distinctRoleIds))) {
       throw new BusinessException(ExceptionCode.EMPLOYEE_ROLE_UNAVAILABLE);
     }
     employeeRoleMapper.deleteByEmployeeId(employeeId);
-    employeeRoleMapper.insertRelations(employeeId, distinctRoleIds, LocalDateTime.now());
-    permissionService.invalidateAll();
+    insertEmployeeRoleRelations(employeeId, distinctRoleIds);
   }
 
-  private void validateDepartment(long departmentId) {
-    DepartmentEntity department = departmentMapper.selectById(departmentId);
+  private void lockAvailableDepartment(long departmentId) {
+    DepartmentEntity department = departmentMapper.selectByIdForUpdate(departmentId);
     if (department == null || department.getStatus() != SystemStatus.ENABLED.getCode()) {
       throw new BusinessException(ExceptionCode.EMPLOYEE_DEPARTMENT_UNAVAILABLE);
     }
   }
 
-  private void validateUnique(EmployeeSaveDTO request, Long employeeId) {
+  private void insertEmployeeRoleRelations(long employeeId, List<Long> roleIds) {
+    if (roleIds.isEmpty()) {
+      return;
+    }
+    LocalDateTime now = LocalDateTime.now();
+    for (int start = 0; start < roleIds.size(); start += RELATION_BATCH_SIZE) {
+      int end = Math.min(start + RELATION_BATCH_SIZE, roleIds.size());
+      List<EmployeeRoleEntity> relations =
+          roleIds.subList(start, end).stream()
+              .map(roleId -> employeeRole(employeeId, roleId, now))
+              .toList();
+      employeeRoleMapper.insertBatch(relations);
+    }
+  }
+
+  private EmployeeRoleEntity employeeRole(long employeeId, long roleId, LocalDateTime createdAt) {
+    EmployeeRoleEntity relation = new EmployeeRoleEntity();
+    relation.setEmployeeId(employeeId);
+    relation.setRoleId(roleId);
+    relation.setCreatedAt(createdAt);
+    return relation;
+  }
+
+  private void validateUnique(
+      String username, String phoneValue, String emailValue, Long employeeId) {
     rejectDuplicate(
-        employeeMapper.selectByUsername(request.getUsername()),
+        employeeMapper.selectByUsername(username),
         employeeId,
         ExceptionCode.EMPLOYEE_USERNAME_DUPLICATED);
-    String phone = nullableText(request.getPhone());
+    String phone = nullableText(phoneValue);
     if (phone != null) {
       rejectDuplicate(
           employeeMapper.selectByPhone(phone), employeeId, ExceptionCode.EMPLOYEE_PHONE_DUPLICATED);
     }
-    String email = nullableText(request.getEmail());
+    String email = nullableText(emailValue);
     if (email != null) {
       rejectDuplicate(
           employeeMapper.selectByEmail(email), employeeId, ExceptionCode.EMPLOYEE_EMAIL_DUPLICATED);
@@ -208,14 +290,76 @@ public class EmployeeService {
     }
   }
 
-  private void copyEditableFields(EmployeeSaveDTO request, EmployeeEntity employee) {
-    employee.setUsername(request.getUsername());
-    employee.setName(request.getName());
-    employee.setPhone(nullableText(request.getPhone()));
-    employee.setEmail(nullableText(request.getEmail()));
-    employee.setDepartmentId(request.getDepartmentId());
-    employee.setStatus(request.getStatus().getCode());
-    employee.setSuperuser(request.getSuperuser() ? 1 : 0);
+  private void insertEmployee(EmployeeEntity employee) {
+    try {
+      employeeMapper.insert(employee);
+    } catch (DuplicateKeyException exception) {
+      throw translateDuplicateKey(exception);
+    }
+  }
+
+  private void updateEmployee(EmployeeEntity employee) {
+    try {
+      employeeMapper.updateById(employee);
+    } catch (DuplicateKeyException exception) {
+      throw translateDuplicateKey(exception);
+    }
+  }
+
+  private void updateEmployeeBySnapshot(
+      EmployeeEntity employee, int expectedStatus, int expectedSuperuser) {
+    try {
+      if (employeeMapper.updateBySnapshot(employee, expectedStatus, expectedSuperuser) == 0) {
+        throw new BusinessException(ExceptionCode.EMPLOYEE_CONCURRENT_MODIFICATION);
+      }
+    } catch (DuplicateKeyException exception) {
+      throw translateDuplicateKey(exception);
+    }
+  }
+
+  private void requireCurrentSnapshot(EmployeeEntity employee) {
+    if (!employeeMapper.matchesSnapshot(
+        employee.getId(), employee.getStatus(), employee.getSuperuser())) {
+      throw new BusinessException(ExceptionCode.EMPLOYEE_CONCURRENT_MODIFICATION);
+    }
+  }
+
+  private RuntimeException translateDuplicateKey(DuplicateKeyException exception) {
+    String message = exception.getMessage();
+    if (message != null && message.contains(USERNAME_UNIQUE_INDEX)) {
+      return new BusinessException(ExceptionCode.EMPLOYEE_USERNAME_DUPLICATED);
+    }
+    if (message != null && message.contains(PHONE_UNIQUE_INDEX)) {
+      return new BusinessException(ExceptionCode.EMPLOYEE_PHONE_DUPLICATED);
+    }
+    if (message != null && message.contains(EMAIL_UNIQUE_INDEX)) {
+      return new BusinessException(ExceptionCode.EMPLOYEE_EMAIL_DUPLICATED);
+    }
+    return exception;
+  }
+
+  private void validatePasswordLength(String password) {
+    if (password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_PASSWORD_BYTES) {
+      throw new BusinessException(ExceptionCode.EMPLOYEE_PASSWORD_TOO_LONG);
+    }
+  }
+
+  private void copyEditableFields(
+      String username,
+      String name,
+      String phone,
+      String email,
+      long departmentId,
+      SystemStatus status,
+      boolean superuser,
+      EmployeeEntity employee) {
+    employee.setUsername(username);
+    employee.setName(name);
+    employee.setPhone(nullableText(phone));
+    employee.setEmail(nullableText(email));
+    employee.setDepartmentId(departmentId);
+    employee.setStatus(status.getCode());
+    employee.setSuperuser(superuser ? 1 : 0);
   }
 
   private EmployeeEntity requiredEmployee(long employeeId) {

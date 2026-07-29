@@ -3,12 +3,17 @@ package com.oa.action.controller.system;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import java.lang.reflect.Method;
 import java.util.HashSet;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 /** 员工管理接口测试。 */
 class EmployeeControllerTest {
@@ -37,6 +42,45 @@ class EmployeeControllerTest {
             "/status",
             "/delete",
             "/reset-password",
-            "/roles");
+            "/roles",
+            "/role-ids");
+  }
+
+  /** 所有带校验请求的接口都应声明422响应。 */
+  @Test
+  void validRequestsShouldDocumentUnprocessableEntityResponse() {
+    for (Method method : EmployeeController.class.getDeclaredMethods()) {
+      boolean hasValidParameter =
+          java.util.Arrays.stream(method.getParameters())
+              .anyMatch(parameter -> parameter.getAnnotation(Valid.class) != null);
+      if (!hasValidParameter) {
+        continue;
+      }
+      assertThat(method.getAnnotationsByType(ApiResponse.class))
+          .extracting(ApiResponse::responseCode)
+          .contains("422");
+    }
+  }
+
+  /** Controller和所有原始ID参数应启用正数方法校验。 */
+  @Test
+  void rawIdParametersShouldBePositive() {
+    assertThat(EmployeeController.class.getAnnotation(Validated.class)).isNotNull();
+    for (String methodName : java.util.List.of("detail", "delete", "roles", "roleIds")) {
+      Method method =
+          java.util.Arrays.stream(EmployeeController.class.getDeclaredMethods())
+              .filter(candidate -> candidate.getName().equals(methodName))
+              .findFirst()
+              .orElseThrow();
+      java.lang.reflect.Parameter idParameter =
+          java.util.Arrays.stream(method.getParameters())
+              .filter(parameter -> parameter.getAnnotation(RequestParam.class) != null)
+              .findFirst()
+              .orElseThrow();
+      assertThat(idParameter.getAnnotation(Positive.class)).isNotNull();
+      assertThat(method.getAnnotationsByType(ApiResponse.class))
+          .extracting(ApiResponse::responseCode)
+          .contains("422");
+    }
   }
 }

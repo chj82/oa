@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.oa.dao.system.ResourceApiMapper">
+    <insert id="insertBatch">
+        INSERT INTO t_resource_api (resource_id, api_id, created_at)
+        VALUES
+        <foreach collection="relations" item="item" separator=",">
+            (#{item.resourceId}, #{item.apiId}, #{item.createdAt})
+        </foreach>
+    </insert>
+</mapper>

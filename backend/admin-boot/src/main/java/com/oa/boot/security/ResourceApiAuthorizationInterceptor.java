@@ -1,6 +1,6 @@
 package com.oa.boot.security;
 
-import com.oa.common.constant.AuthenticationConstants;
+import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
@@ -29,9 +29,8 @@ public class ResourceApiAuthorizationInterceptor implements HandlerInterceptor {
     if ("OPTIONS".equals(request.getMethod())) {
       return true;
     }
-    Object employeeAttribute =
-        request.getAttribute(AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE);
-    if (!(employeeAttribute instanceof CurrentEmployeeVO employee)) {
+    CurrentEmployeeVO employee = CurrentEmployeeContext.get();
+    if (employee == null) {
       writeError(response, 401, ExceptionCode.UNAUTHORIZED);
       return false;
     }

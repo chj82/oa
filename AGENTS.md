@@ -19,21 +19,30 @@
 - 使用 Java 17、Spring Boot 3、MyBatis-Plus、MySQL、Druid、Redis 和 springdoc-openapi。
 - 基础包名统一为 `com.oa`。
 - Maven 模块依赖方向固定为：`admin-boot → admin-action → admin-service → admin-dao → admin-entity → admin-common`。
-- `admin-action` 只放 Controller，包路径统一使用 `com.oa.action.controller.<业务模块>`；过滤器、拦截器、Web/CORS 配置和全局异常处理统一放在 `admin-boot`。跨模块共享的请求属性名、Cookie 名等常量放在 `admin-common`，禁止 `admin-action` 反向依赖 `admin-boot`。
+- `admin-action` 只放 Controller，包路径统一使用 `com.oa.action.controller.<业务模块>`；过滤器、拦截器、Web/CORS 配置和全局异常处理统一放在 `admin-boot`。跨模块共享的登录上下文、Cookie 名等稳定能力放在 `admin-common`，禁止 `admin-action` 反向依赖 `admin-boot`。
+- 当前登录员工使用普通 `ThreadLocal` 保存请求线程上下文：`TokenAuthenticationFilter` 仅在认证成功后写入，并必须在过滤器 `finally` 中清理；Controller 和权限拦截器可以读取该上下文，Service 继续通过显式参数接收当前员工或员工 ID。禁止使用 `InheritableThreadLocal`，禁止向异步任务或子线程传播登录上下文，禁止继续使用 `HttpServletRequest` 属性传递当前员工。
 - 当前登录会话和员工权限缓存仅支持单机 Redis。会话与员工会话索引、权限版本与员工权限键均由 Lua 跨键访问，禁止直接配置 Redis Cluster；如需支持集群，必须先重新设计键槽和批量失效方案。
 - 接口鉴权优先读取 Redis 员工权限缓存，缓存命中时不得访问数据库或开启数据库事务。缓存键为 `admin:permission:<employeeId>`，值使用 `EmployeePermissionCache`，TTL 为 1 天；全局版本键为 `admin:permission:version`，不存在时按 `0` 初始化。
-- 读取权限缓存必须使用单次 Lua 同时校验全局版本和缓存版本；缓存缺失或版本不一致时，才使用单表权限链重建全部启用接口路径。重建前读取版本，重建期间发生版本递增时允许写入旧版本缓存，使其在下次读取时自动失效。
-- 权限相关数据库写入调用 `PermissionService.invalidateAll()` 时，必须立即写入无 TTL 的全局“权限失效处理中”标记；标记存在期间权限缓存读取失败关闭并返回 `503`，不得继续使用旧缓存。数据库提交后使用单次 Lua 原子递增全局版本并按 token 清理标记，明确回滚时只清理当前 token；提交后 Redis 操作失败必须保留标记，后续 `invalidateAll()` 或显式接口同步命令负责递增版本并恢复残留标记，禁止通过 TTL 自动解除。
+- 读取权限缓存必须使用单次 Lua 同时恢复租约已过期的失效 token、拒绝任一仍活动的失效事务，并校验全局版本和缓存版本；缓存缺失或版本不一致时才使用单表权限链重建全部启用接口路径。重建完成后必须通过 `putIfCurrent` 单次 Lua 再次确认没有活动失效事务且全局版本仍等于缓存版本，确认成功才能返回；失败时当前请求返回 `503`，不得使用未验证的重建结果。
+- 权限相关数据库写入调用 `PermissionService.invalidateAll()` 时，必须将当前事务 token 加入无 TTL 的 pending Set，并写入 `admin:permission:invalidating:lease:<token>` 独立 60 秒租约；全局数据库事务默认超时固定为 30 秒，必须小于租约 TTL。任一活动租约存在期间权限缓存读取失败关闭并返回 `503`。读取、开始和显式重试只清理租约已过期的 token；一次扫描发现一个或多个过期 token 时全局版本只递增一次。提交后递增版本并只移除当前 token 和租约，回滚同样只移除当前 token 和租约，禁止清理其他并发事务的活动 token。pending Set 永不设置 TTL。
 - 同一员工的权限缓存重建使用单机 Redis 短期锁串行化，锁键为 `admin:permission:rebuild-lock:<employeeId>`，TTL 为 10 秒；持锁方必须二次读取缓存后再查数据库，并使用 token 校验 Lua 释放。未持锁方只允许有限短轮询缓存，不得访问 Mapper，轮询结束仍未命中时返回 `503`。
 - Redis 权限缓存 Lua 和版本、锁操作的异常空返回，以及权限缓存 JSON 缺字段、字段类型错误、序列化或反序列化失败，都必须转换为 `AuthenticationInfrastructureException` 并返回 `503`；普通缓存未命中使用明确的 Lua 状态值表达，不得与异常空返回混用。
-- 接口同步、员工状态或超级管理员标记、员工角色、角色状态、角色资源、资源状态或父级、资源接口关联、接口状态或路径发生实际变化后，必须调用 `PermissionService.invalidateAll()`，在数据库事务成功提交后通过 Redis `INCR` 原子递增全局版本。任务 5 新增相关写 Service 时必须落实该调用并测试；不得只依赖 1 天 TTL。
+- 接口同步、员工状态或超级管理员标记、员工角色、角色状态、角色资源、资源状态、类型或父级、资源接口关联、接口状态或路径发生实际变化后，必须调用 `PermissionService.invalidateAll()`，在数据库事务成功提交后通过 Redis `INCR` 原子递增全局版本。资源新增尚未被任何角色授权，不刷新权限；资源名称、编码、路径、图标、排序和可见性等纯展示字段修改也不刷新权限。任务 5 新增相关写 Service 时必须落实该调用并测试；不得只依赖 1 天 TTL。
 - 超级管理员标记写入登录会话；任务 5 修改该标记时，除递增权限版本外还必须调用 `SessionService.invalidateEmployeeSessions()` 使该员工全部旧会话失效。
+- 基础版没有单独的 `built_in` 字段，所有当前 `is_superuser = 1` 的员工均视为受保护超级管理员，禁止降级、删除和禁用；员工禁止删除自己。
 - Redis 权限缓存不可用时鉴权失败关闭并返回 `503`，不得降级为每请求查数据库，也不得返回 `403` 混淆为业务无权限。
 - 系统能力放在各层 `system` 子包；后续业务按相同方式增加业务子包，不新增业务 Maven 模块。
 - 默认直接定义具体类；只有存在两个及以上生产实现时才抽取接口，测试 Fake/Mock 不作为拆分接口的理由。Mapper 等框架要求的接口除外。
 - 没有对应接口时不使用 `impl` 包；配置类放 `config`，存储适配类按职责放 `store` 等语义化子包。
 - Service 不写 SQL，也不构造 MyBatis-Plus `Wrapper`；数据查询和修改封装为语义化 Mapper 方法。简单单表查询优先在 Mapper 默认方法中使用 MyBatis-Plus。数据访问优先拆为单表查询；只有单表查询无法合理完成时才允许关联查询，单条关联查询最多涉及 3 张表，确实需要超过 3 张表时必须先向用户提出单独讨论，未经确认不得实现。
 - 非必要不使用 `SELECT ... FOR UPDATE` 等数据库行锁；只有存在明确的并发一致性要求且普通事务、唯一索引或条件更新无法满足时才使用，并说明锁定范围和事务边界。禁止在持有数据库行锁期间调用 Redis、HTTP 等外部服务。
+- 部门层级写操作是行锁例外：使用 `READ_COMMITTED` 事务，按部门 ID 升序锁定当前部门及目标父级祖先链，锁后必须重载部门图并校验父级、状态、环路和层级；新增子部门与删除父部门通过同一父部门行锁互斥。持锁期间不得调用 Redis、HTTP 等外部服务。
+- 项目不使用数据库外键，因此员工删除和员工角色保存必须先锁目标 `t_employee` 行，员工角色保存随后按 ID 升序锁定角色行；角色删除、角色资源保存必须锁定涉及的 `t_role` 行，角色资源保存再按 ID 升序锁定资源行。非根资源新增锁父资源；资源修改按 ID 升序锁当前资源和新父资源；资源状态修改、资源接口保存和资源删除锁目标资源。资源操作不反向锁角色行。多个角色或资源统一按 ID 升序锁定；需要权限失效时必须在获取行锁前写入 Redis，获取锁后直到事务结束只执行数据库操作。普通详情、树和分页查询不得加锁。
+- 资源新增和移动必须先读取资源图快照，解析目标完整祖先链，再按 ID 升序一次锁定全链；锁后逐项核对父级、状态和类型，任何快照后并发变化都抛出 `RESOURCE_CONCURRENT_MODIFICATION`，不得继续覆盖。资源修改还要核对当前资源的父级、状态和类型。权限语义是否变化以锁前快照判断并在锁前调用 Redis 失效；锁后只允许数据库操作。
+- 资源修改在锁定当前资源和完整祖先链后，必须再次单表加载最新资源图，所有现有子节点类型、移动环路和整棵子树深度校验都使用锁后资源图，禁止继续使用锁前图判断。
+- 资源新增和修改事务显式使用 `READ_COMMITTED`，确保等待父资源或当前资源行锁后，普通二次资源图查询能够看到等待期间已经提交的子节点变化；禁止在 MySQL 默认 `REPEATABLE_READ` 下用普通一致性读冒充锁后最新读。这里依赖父资源和当前资源行锁形成稳定窗口，不扩大为全表锁，也不修改项目全局事务隔离级别。
+- 资源接口保存先读取现有关联快照并按集合比较。请求集合相同则不刷新权限，锁资源后再次读取，仍相同直接返回且不删除、不插入；锁后发现并发变化时抛出并发修改异常。请求集合不同时先刷新权限，再锁资源并全量替换。
+- 员工角色、角色资源等关联数据批量写入使用 Mapper XML 的单表多 `VALUES` SQL，Service 每批最多 500 条；禁止在循环中逐条执行 `insert`。
 - DTO 放在 `admin-common/model/<业务>/dto`，VO 放在 `admin-common/model/<业务>/vo`，业务枚举统一放在 `admin-common/model/<业务>/enums`，缓存对象等其他模型也必须放在 `admin-common/model/<业务>/<语义子包>`。`admin-service` 等其他模块不得自行建立 `model` 包或定义数据模型。
 - 数据对象使用传统 Java Bean：普通 `class`、`private` 字段、公开无参构造，以及显式标准 Getter/Setter；禁止使用 `record`、Lombok。可根据实际用途增加带参构造器或链式 Setter，但不为没有需要的对象添加额外写法。
 - Entity、DTO、VO、统一响应、分页对象等所有对象字段上方必须使用 `/** 中文字段说明 */`，明确说明字段用途；Getter/Setter 不写重复的方法注释。

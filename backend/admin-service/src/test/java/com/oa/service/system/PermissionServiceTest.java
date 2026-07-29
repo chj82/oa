@@ -60,6 +60,8 @@ class PermissionServiceTest {
             systemApiMapper,
             permissionStore);
     when(permissionStore.tryAcquireRebuildLock(anyLong())).thenReturn("lock-token");
+    when(permissionStore.putIfCurrent(anyLong(), any(EmployeePermissionCache.class)))
+        .thenReturn(true);
   }
 
   /** 缓存命中时直接判断路由模板，不访问任何 Mapper。 */
@@ -112,7 +114,8 @@ class PermissionServiceTest {
 
     ArgumentCaptor<EmployeePermissionCache> cacheCaptor =
         ArgumentCaptor.forClass(EmployeePermissionCache.class);
-    verify(permissionStore).put(org.mockito.ArgumentMatchers.eq(7L), cacheCaptor.capture());
+    verify(permissionStore)
+        .putIfCurrent(org.mockito.ArgumentMatchers.eq(7L), cacheCaptor.capture());
     assertTrue(cacheCaptor.getValue().getVersion() == 4L);
     assertTrue(cacheCaptor.getValue().getApiPaths().contains("/api/orders/{id}"));
     verify(permissionStore).releaseRebuildLock(7L, "lock-token");
@@ -197,10 +200,11 @@ class PermissionServiceTest {
     when(permissionStore.currentVersion()).thenReturn(5L);
     when(employeeMapper.selectById(7L)).thenReturn(employee(1, 1));
     when(systemApiMapper.selectEnabledPaths()).thenReturn(List.of("/api/enabled"));
+    when(systemResourceMapper.selectAllOrdered()).thenReturn(List.of());
 
     assertFalse(permissionService.hasPermission(7L, "/api/disabled"));
 
-    verifyNoInteractions(employeeRoleMapper, roleMapper, roleResourceMapper, systemResourceMapper);
+    verifyNoInteractions(employeeRoleMapper, roleMapper, roleResourceMapper);
   }
 
   /** 禁用员工重建为空权限，且不继续查询角色。 */
@@ -213,7 +217,25 @@ class PermissionServiceTest {
     assertFalse(permissionService.hasPermission(7L, "/api/orders"));
 
     verify(employeeRoleMapper, never()).selectRoleIdsByEmployeeId(anyLong());
-    verify(permissionStore).put(org.mockito.ArgumentMatchers.eq(7L), any());
+    verify(permissionStore).putIfCurrent(org.mockito.ArgumentMatchers.eq(7L), any());
+  }
+
+  /** 重建期间全局版本变化时不得使用旧快照放行当前请求。 */
+  @Test
+  void 重建缓存原子写入失败时当前请求失败关闭() {
+    prepareSingleResource(10L);
+    when(systemResourceMapper.selectExistingByIds(Set.of(10L)))
+        .thenReturn(List.of(resource(10L, 0L, 1)));
+    when(resourceApiMapper.selectApiIdsByResourceIds(Set.of(10L))).thenReturn(List.of(20L));
+    when(systemApiMapper.selectEnabledPathsByIds(List.of(20L))).thenReturn(List.of("/api/orders"));
+    when(permissionStore.putIfCurrent(anyLong(), any(EmployeePermissionCache.class)))
+        .thenReturn(false);
+
+    assertThrows(
+        AuthenticationInfrastructureException.class,
+        () -> permissionService.hasPermission(7L, "/api/orders"));
+
+    verify(permissionStore).putIfCurrent(org.mockito.ArgumentMatchers.eq(7L), any());
   }
 
   /** 事务中的权限失效只在提交成功后递增版本，避免新版本读取未提交旧数据。 */
@@ -299,6 +321,7 @@ class PermissionServiceTest {
     EmployeePermissionCache cache = new EmployeePermissionCache();
     cache.setVersion(version);
     cache.setApiPaths(Set.of(apiPaths));
+    cache.setResources(List.of());
     return cache;
   }
 
@@ -318,6 +341,8 @@ class PermissionServiceTest {
     SystemResourceEntity resource = new SystemResourceEntity();
     resource.setId(id);
     resource.setParentId(parentId);
+    resource.setType("ACTION");
+    resource.setName("测试资源");
     resource.setStatus(status);
     return resource;
   }

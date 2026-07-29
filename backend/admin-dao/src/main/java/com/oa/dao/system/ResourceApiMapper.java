@@ -6,10 +6,38 @@ import com.oa.entity.system.ResourceApiEntity;
 import java.util.Collection;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 /** 资源接口关联数据访问接口。 */
 @Mapper
 public interface ResourceApiMapper extends BaseMapper<ResourceApiEntity> {
+  /** 查询指定资源关联的接口ID。 */
+  default List<Long> selectApiIdsByResourceId(long resourceId) {
+    return selectList(
+            Wrappers.<ResourceApiEntity>lambdaQuery()
+                .select(ResourceApiEntity::getApiId)
+                .eq(ResourceApiEntity::getResourceId, resourceId)
+                .orderByAsc(ResourceApiEntity::getApiId))
+        .stream()
+        .map(ResourceApiEntity::getApiId)
+        .toList();
+  }
+
+  /** 查询指定资源的接口关联数量。 */
+  default long countByResourceId(long resourceId) {
+    return selectCount(
+        Wrappers.<ResourceApiEntity>lambdaQuery().eq(ResourceApiEntity::getResourceId, resourceId));
+  }
+
+  /** 删除指定资源的接口关联。 */
+  default void deleteByResourceId(long resourceId) {
+    delete(
+        Wrappers.<ResourceApiEntity>lambdaQuery().eq(ResourceApiEntity::getResourceId, resourceId));
+  }
+
+  /** 单条SQL批量新增资源接口关联。 */
+  int insertBatch(@Param("relations") List<ResourceApiEntity> relations);
+
   /** 查询指定资源集合关联的接口ID。 */
   default List<Long> selectApiIdsByResourceIds(Collection<Long> resourceIds) {
     if (resourceIds.isEmpty()) {

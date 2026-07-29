@@ -1,10 +1,12 @@
 package com.oa.boot.security;
 
 import com.oa.common.constant.AuthenticationConstants;
+import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.cache.LoginSessionCache;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
+import com.oa.service.system.PermissionService;
 import com.oa.service.system.SessionService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -22,12 +24,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class TokenAuthenticationFilter extends OncePerRequestFilter {
   private final SessionService sessionService;
+  private final PermissionService permissionService;
   private final String frontendOrigin;
 
   public TokenAuthenticationFilter(
       SessionService sessionService,
+      PermissionService permissionService,
       @Value("${app.security.frontend-origin:http://localhost:3000}") String frontendOrigin) {
     this.sessionService = sessionService;
+    this.permissionService = permissionService;
     this.frontendOrigin = FrontendOrigin.normalize(frontendOrigin);
   }
 
@@ -63,22 +68,30 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
       writeError(response, 401, ExceptionCode.UNAUTHORIZED);
       return;
     }
-    request.setAttribute(
-        AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE, currentEmployee(session));
+    CurrentEmployeeVO currentEmployee;
+    try {
+      currentEmployee =
+          currentEmployee(session, "/api/auth/current".equals(request.getRequestURI()));
+    } catch (AuthenticationInfrastructureException exception) {
+      writeError(response, 503, ExceptionCode.AUTH_INFRASTRUCTURE_UNAVAILABLE);
+      return;
+    }
+    CurrentEmployeeContext.set(currentEmployee);
     try {
       filterChain.doFilter(request, response);
     } finally {
-      request.removeAttribute(AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE);
+      CurrentEmployeeContext.clear();
     }
   }
 
-  private CurrentEmployeeVO currentEmployee(LoginSessionCache session) {
+  private CurrentEmployeeVO currentEmployee(LoginSessionCache session, boolean includeResources) {
     CurrentEmployeeVO employee = new CurrentEmployeeVO();
     employee.setId(session.getEmployeeId());
     employee.setUsername(session.getUsername());
     employee.setName(session.getName());
     employee.setSuperuser(session.getSuperuser());
-    employee.setResources(List.of());
+    employee.setResources(
+        includeResources ? permissionService.getResources(session.getEmployeeId()) : List.of());
     return employee;
   }
 

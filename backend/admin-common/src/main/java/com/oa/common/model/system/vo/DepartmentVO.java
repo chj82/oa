@@ -1,6 +1,8 @@
 package com.oa.common.model.system.vo;
 
 import com.oa.common.model.system.enums.SystemStatus;
+import java.util.ArrayList;
+import java.util.List;
 
 /** 部门展示模型。 */
 public class DepartmentVO {
@@ -19,7 +21,12 @@ public class DepartmentVO {
   /** 部门状态。 */
   private SystemStatus status;
 
-  public DepartmentVO() {}
+  /** 子部门列表。 */
+  private List<DepartmentVO> children;
+
+  public DepartmentVO() {
+    this.children = new ArrayList<>();
+  }
 
   public Long getId() {
     return id;
@@ -59,5 +66,13 @@ public class DepartmentVO {
 
   public void setStatus(SystemStatus status) {
     this.status = status;
+  }
+
+  public List<DepartmentVO> getChildren() {
+    return children;
+  }
+
+  public void setChildren(List<DepartmentVO> children) {
+    this.children = children;
   }
 }

@@ -1,6 +1,8 @@
 spring:
   application:
     name: oa-admin
+  transaction:
+    default-timeout: 30s
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -22,6 +24,9 @@ server:
   port: ${SERVER_PORT:8080}
 
 app:
+  command: ${APP_COMMAND:}
+  initial-admin-username: ${INITIAL_ADMIN_USERNAME:admin}
+  initial-admin-password: ${INITIAL_ADMIN_PASSWORD:}
   security:
     frontend-origin: ${FRONTEND_ORIGIN:http://localhost:3000}
     cookie-secure: ${COOKIE_SECURE:false}

@@ -21,16 +21,19 @@ import org.springframework.stereotype.Repository;
 public class StringRedisPermissionStore {
   private static final String PERMISSION_PREFIX = "admin:permission:";
   private static final String VERSION_KEY = "admin:permission:version";
-  private static final String INVALIDATING_KEY = "admin:permission:invalidating";
+  private static final String PENDING_SET_KEY = "admin:permission:invalidating:pending";
+  private static final String INVALIDATING_LEASE_PREFIX = "admin:permission:invalidating:lease:";
   private static final String REBUILD_LOCK_PREFIX = "admin:permission:rebuild-lock:";
   private static final String CACHE_MISS = "__PERMISSION_CACHE_MISS__";
   private static final String CACHE_INVALIDATING = "__PERMISSION_INVALIDATING__";
   private static final String CACHE_INVALID = "__PERMISSION_CACHE_INVALID__";
   private static final Duration CACHE_TTL = Duration.ofDays(1);
   private static final Duration REBUILD_LOCK_TTL = Duration.ofSeconds(10);
+  private static final Duration INVALIDATING_LEASE_TTL = Duration.ofSeconds(60);
   private static final DefaultRedisScript<String> GET_IF_CURRENT_SCRIPT =
       new DefaultRedisScript<>(
-          "if redis.call('EXISTS', KEYS[3]) == 1 then return '"
+          pendingRecoveryScript(1, 3, 4)
+              + "if active then return '"
               + CACHE_INVALIDATING
               + "'; end; "
               + "local version = redis.call('GET', KEYS[1]); "
@@ -41,6 +44,7 @@ public class StringRedisPermissionStore {
               + "'; end; "
               + "local cache = cjson.decode(value); "
               + "if type(cache.version) ~= 'number' or type(cache.apiPaths) ~= 'table' "
+              + "or type(cache.resources) ~= 'table' "
               + "then return '"
               + CACHE_INVALID
               + "'; end; "
@@ -52,6 +56,15 @@ public class StringRedisPermissionStore {
               + "'; end; "
               + "return value",
           String.class);
+  private static final DefaultRedisScript<Long> PUT_IF_CURRENT_SCRIPT =
+      script(
+          pendingRecoveryScript(1, 3, 4)
+              + "if active then return 0; end; "
+              + "local version = redis.call('GET', KEYS[1]); "
+              + "if not version then redis.call('SET', KEYS[1], '0'); version = '0'; end; "
+              + "local cacheVersion = ARGV[1]; "
+              + "if tostring(version) ~= cacheVersion then return 0; end; "
+              + "redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3]); return 1");
   private static final DefaultRedisScript<Long> CURRENT_VERSION_SCRIPT =
       new DefaultRedisScript<>(
           "local version = redis.call('GET', KEYS[1]); "
@@ -60,23 +73,24 @@ public class StringRedisPermissionStore {
           Long.class);
   private static final DefaultRedisScript<String> BEGIN_INVALIDATION_SCRIPT =
       new DefaultRedisScript<>(
-          "if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('INCR', KEYS[1]); end; "
-              + "redis.call('SET', KEYS[2], ARGV[1]); return ARGV[1]",
+          pendingRecoveryScript(1, 2, 3)
+              + "redis.call('SADD', KEYS[2], ARGV[1]); "
+              + "redis.call('SET', KEYS[3] .. ARGV[1], ARGV[1], 'PX', ARGV[2]); "
+              + "return ARGV[1]",
           String.class);
   private static final DefaultRedisScript<Long> COMPLETE_INVALIDATION_SCRIPT =
       script(
           "local version = redis.call('INCR', KEYS[1]); "
-              + "if redis.call('GET', KEYS[2]) == ARGV[1] then redis.call('DEL', KEYS[2]); end; "
+              + "redis.call('SREM', KEYS[2], ARGV[1]); "
+              + "redis.call('DEL', KEYS[3] .. ARGV[1]); "
               + "return version");
   private static final DefaultRedisScript<Long> CANCEL_INVALIDATION_SCRIPT =
       script(
-          "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]); "
-              + "end; return 0");
+          "local removed = redis.call('SREM', KEYS[1], ARGV[1]); "
+              + "redis.call('DEL', KEYS[2] .. ARGV[1]); return removed");
   private static final DefaultRedisScript<Long> RETRY_INVALIDATION_SCRIPT =
       script(
-          "if redis.call('EXISTS', KEYS[2]) == 1 then "
-              + "local version = redis.call('INCR', KEYS[1]); redis.call('DEL', KEYS[2]); "
-              + "return version; end; "
+          pendingRecoveryScript(1, 2, 3)
               + "local version = redis.call('GET', KEYS[1]); "
               + "if not version then redis.call('SET', KEYS[1], '0'); return 0; end; "
               + "return tonumber(version)");
@@ -102,7 +116,11 @@ public class StringRedisPermissionStore {
             () ->
                 redisTemplate.execute(
                     GET_IF_CURRENT_SCRIPT,
-                    List.of(VERSION_KEY, PERMISSION_PREFIX + employeeId, INVALIDATING_KEY)));
+                    List.of(
+                        VERSION_KEY,
+                        PERMISSION_PREFIX + employeeId,
+                        PENDING_SET_KEY,
+                        INVALIDATING_LEASE_PREFIX)));
     if (CACHE_MISS.equals(value)) {
       return null;
     }
@@ -118,16 +136,23 @@ public class StringRedisPermissionStore {
         executeRequired(() -> redisTemplate.execute(CURRENT_VERSION_SCRIPT, List.of(VERSION_KEY))));
   }
 
-  /** 将员工权限缓存写入 Redis 并设置一天有效期。 */
-  public void put(long employeeId, EmployeePermissionCache cache) {
+  /** 仅在全局版本仍匹配且没有活动失效事务时原子写入员工权限缓存。 */
+  public boolean putIfCurrent(long employeeId, EmployeePermissionCache cache) {
     validateCache(cache);
-    executeRequired(
-        () -> {
-          redisTemplate
-              .opsForValue()
-              .set(PERMISSION_PREFIX + employeeId, writeCache(cache), CACHE_TTL);
-          return Boolean.TRUE;
-        });
+    Long result =
+        executeRequired(
+            () ->
+                redisTemplate.execute(
+                    PUT_IF_CURRENT_SCRIPT,
+                    List.of(
+                        VERSION_KEY,
+                        PERMISSION_PREFIX + employeeId,
+                        PENDING_SET_KEY,
+                        INVALIDATING_LEASE_PREFIX),
+                    Long.toString(cache.getVersion()),
+                    writeCache(cache),
+                    Long.toString(CACHE_TTL.toMillis())));
+    return result == 1L;
   }
 
   /** 原子递增全局权限版本，使全部员工旧缓存失效。 */
@@ -141,7 +166,10 @@ public class StringRedisPermissionStore {
     return executeRequired(
         () ->
             redisTemplate.execute(
-                BEGIN_INVALIDATION_SCRIPT, List.of(VERSION_KEY, INVALIDATING_KEY), token));
+                BEGIN_INVALIDATION_SCRIPT,
+                List.of(VERSION_KEY, PENDING_SET_KEY, INVALIDATING_LEASE_PREFIX),
+                token,
+                Long.toString(INVALIDATING_LEASE_TTL.toMillis())));
   }
 
   /** 数据库提交后原子递增权限版本，并仅清理当前失效 token。 */
@@ -150,13 +178,19 @@ public class StringRedisPermissionStore {
         executeRequired(
             () ->
                 redisTemplate.execute(
-                    COMPLETE_INVALIDATION_SCRIPT, List.of(VERSION_KEY, INVALIDATING_KEY), token)));
+                    COMPLETE_INVALIDATION_SCRIPT,
+                    List.of(VERSION_KEY, PENDING_SET_KEY, INVALIDATING_LEASE_PREFIX),
+                    token)));
   }
 
   /** 数据库回滚后仅清理当前事务持有的失效 token。 */
   public void cancelInvalidation(String token) {
     executeRequired(
-        () -> redisTemplate.execute(CANCEL_INVALIDATION_SCRIPT, List.of(INVALIDATING_KEY), token));
+        () ->
+            redisTemplate.execute(
+                CANCEL_INVALIDATION_SCRIPT,
+                List.of(PENDING_SET_KEY, INVALIDATING_LEASE_PREFIX),
+                token));
   }
 
   /** 恢复提交后遗留的失效标记，并确保旧权限缓存版本失效。 */
@@ -165,7 +199,8 @@ public class StringRedisPermissionStore {
         executeRequired(
             () ->
                 redisTemplate.execute(
-                    RETRY_INVALIDATION_SCRIPT, List.of(VERSION_KEY, INVALIDATING_KEY))));
+                    RETRY_INVALIDATION_SCRIPT,
+                    List.of(VERSION_KEY, PENDING_SET_KEY, INVALIDATING_LEASE_PREFIX))));
   }
 
   /** 尝试获取员工权限重建锁，未获取时返回空。 */
@@ -196,6 +231,7 @@ public class StringRedisPermissionStore {
       JsonNode root = objectMapper.readTree(value);
       JsonNode version = root == null ? null : root.get("version");
       JsonNode apiPaths = root == null ? null : root.get("apiPaths");
+      JsonNode resources = root == null ? null : root.get("resources");
       if (root == null
           || !root.isObject()
           || version == null
@@ -203,7 +239,9 @@ public class StringRedisPermissionStore {
           || !version.canConvertToLong()
           || version.longValue() < 0
           || apiPaths == null
-          || !apiPaths.isArray()) {
+          || !apiPaths.isArray()
+          || resources == null
+          || !resources.isArray()) {
         throw unavailable();
       }
       EmployeePermissionCache cache = objectMapper.treeToValue(root, EmployeePermissionCache.class);
@@ -226,7 +264,10 @@ public class StringRedisPermissionStore {
   }
 
   private void validateCache(EmployeePermissionCache cache) {
-    if (cache == null || cache.getVersion() < 0 || cache.getApiPaths() == null) {
+    if (cache == null
+        || cache.getVersion() < 0
+        || cache.getApiPaths() == null
+        || cache.getResources() == null) {
       throw unavailable();
     }
     Set<String> apiPaths = cache.getApiPaths();
@@ -244,6 +285,24 @@ public class StringRedisPermissionStore {
 
   private static DefaultRedisScript<Long> script(String source) {
     return new DefaultRedisScript<>(source, Long.class);
+  }
+
+  private static String pendingRecoveryScript(
+      int versionKey, int pendingSetKey, int leasePrefixKey) {
+    return "local active = false; local recovered = false; "
+        + "local tokens = redis.call('SMEMBERS', KEYS["
+        + pendingSetKey
+        + "]); "
+        + "for _, token in ipairs(tokens) do "
+        + "if redis.call('EXISTS', KEYS["
+        + leasePrefixKey
+        + "] .. token) == 1 then active = true; "
+        + "else redis.call('SREM', KEYS["
+        + pendingSetKey
+        + "], token); recovered = true; end; end; "
+        + "if recovered then redis.call('INCR', KEYS["
+        + versionKey
+        + "]); end; ";
   }
 
   private AuthenticationInfrastructureException unavailable() {

@@ -2,33 +2,42 @@ package com.oa.common.model.system.dto;
 
 import com.oa.common.model.system.enums.ResourceType;
 import com.oa.common.model.system.enums.SystemStatus;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
-/** 系统资源新增或修改请求。 */
-public class ResourceSaveDTO {
-  /** 资源ID，新增时为空。 */
-  private Long id;
-
+/** 系统资源新增请求。 */
+public class ResourceCreateDTO {
   /** 父资源ID，根资源为零。 */
-  @NotNull private Long parentId;
+  @NotNull
+  @Min(0)
+  private Long parentId;
 
   /** 资源类型。 */
   @NotNull private ResourceType type;
 
   /** 资源名称。 */
-  @NotBlank private String name;
+  @NotBlank
+  @Size(max = 100)
+  private String name;
 
   /** 菜单或操作资源编码。 */
+  @Size(max = 100)
   private String code;
 
   /** 前端菜单路由。 */
+  @Size(max = 255)
   private String path;
 
   /** 图标名称。 */
+  @Size(max = 100)
   private String icon;
 
   /** 排序值，越小越靠前。 */
+  @Min(0)
+  @Max(1000000)
   private int sortOrder;
 
   /** 是否在导航中可见。 */
@@ -37,15 +46,7 @@ public class ResourceSaveDTO {
   /** 资源状态。 */
   @NotNull private SystemStatus status;
 
-  public ResourceSaveDTO() {}
-
-  public Long getId() {
-    return id;
-  }
-
-  public void setId(Long id) {
-    this.id = id;
-  }
+  public ResourceCreateDTO() {}
 
   public Long getParentId() {
     return parentId;

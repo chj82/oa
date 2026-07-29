@@ -1,6 +1,7 @@
 package com.oa.action.controller.system;
 
 import com.oa.common.constant.AuthenticationConstants;
+import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.model.system.dto.LoginDTO;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
 import com.oa.common.response.ApiResult;
@@ -65,10 +66,8 @@ public class AuthController {
   @ApiResponse(responseCode = "200", description = "获取成功")
   @ApiResponse(responseCode = "401", description = "未登录或会话失效")
   @GetMapping("/current")
-  public ApiResult<CurrentEmployeeVO> current(HttpServletRequest request) {
-    return ApiResult.success(
-        (CurrentEmployeeVO)
-            request.getAttribute(AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE));
+  public ApiResult<CurrentEmployeeVO> current() {
+    return ApiResult.success(CurrentEmployeeContext.get());
   }
 
   private ResponseCookie cookie(String value, long maxAge) {

@@ -2,6 +2,7 @@ package com.oa.common.model.system.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 /** 员工密码重置请求。 */
 public class EmployeePasswordResetDTO {
@@ -9,7 +10,9 @@ public class EmployeePasswordResetDTO {
   @NotNull private Long id;
 
   /** 重置后的登录密码。 */
-  @NotBlank private String password;
+  @NotBlank
+  @Size(min = 8, max = 72)
+  private String password;
 
   public EmployeePasswordResetDTO() {}
 

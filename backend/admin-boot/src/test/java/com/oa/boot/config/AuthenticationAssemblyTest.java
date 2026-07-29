@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.oa.boot.security.TokenAuthenticationFilter;
+import com.oa.service.system.PermissionService;
 import com.oa.service.system.SessionService;
 import com.oa.service.system.config.RedisSessionConfiguration;
 import com.oa.service.system.store.StringRedisSessionStore;
@@ -21,6 +22,7 @@ class AuthenticationAssemblyTest {
       new ApplicationContextRunner()
           .withConfiguration(AutoConfigurations.of(RedisAutoConfiguration.class))
           .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class))
+          .withBean(PermissionService.class, () -> mock(PermissionService.class))
           .withUserConfiguration(AuthenticationTestConfiguration.class)
           .withPropertyValues("app.security.frontend-origin=http://localhost:3000");
 

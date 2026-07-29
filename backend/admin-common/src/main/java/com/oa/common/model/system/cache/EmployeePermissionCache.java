@@ -1,5 +1,7 @@
 package com.oa.common.model.system.cache;
 
+import com.oa.common.model.system.vo.ResourceVO;
+import java.util.List;
 import java.util.Set;
 
 /** 员工接口权限缓存。 */
@@ -9,6 +11,9 @@ public class EmployeePermissionCache {
 
   /** 员工可访问的启用接口路由模板集合。 */
   private Set<String> apiPaths;
+
+  /** 员工可访问的有效资源树。 */
+  private List<ResourceVO> resources;
 
   public EmployeePermissionCache() {}
 
@@ -26,5 +31,13 @@ public class EmployeePermissionCache {
 
   public void setApiPaths(Set<String> apiPaths) {
     this.apiPaths = apiPaths;
+  }
+
+  public List<ResourceVO> getResources() {
+    return resources;
+  }
+
+  public void setResources(List<ResourceVO> resources) {
+    this.resources = resources;
   }
 }

@@ -2,6 +2,8 @@ package com.oa.common.model.system.vo;
 
 import com.oa.common.model.system.enums.ResourceType;
 import com.oa.common.model.system.enums.SystemStatus;
+import java.time.LocalDateTime;
+import java.util.List;
 
 /** 系统资源展示模型。 */
 public class ResourceVO {
@@ -34,6 +36,15 @@ public class ResourceVO {
 
   /** 资源状态。 */
   private SystemStatus status;
+
+  /** 子资源列表。 */
+  private List<ResourceVO> children;
+
+  /** 创建时间。 */
+  private LocalDateTime createdAt;
+
+  /** 更新时间。 */
+  private LocalDateTime updatedAt;
 
   public ResourceVO() {}
 
@@ -115,5 +126,29 @@ public class ResourceVO {
 
   public void setStatus(SystemStatus status) {
     this.status = status;
+  }
+
+  public List<ResourceVO> getChildren() {
+    return children;
+  }
+
+  public void setChildren(List<ResourceVO> children) {
+    this.children = children;
+  }
+
+  public LocalDateTime getCreatedAt() {
+    return createdAt;
+  }
+
+  public void setCreatedAt(LocalDateTime createdAt) {
+    this.createdAt = createdAt;
+  }
+
+  public LocalDateTime getUpdatedAt() {
+    return updatedAt;
+  }
+
+  public void setUpdatedAt(LocalDateTime updatedAt) {
+    this.updatedAt = updatedAt;
   }
 }

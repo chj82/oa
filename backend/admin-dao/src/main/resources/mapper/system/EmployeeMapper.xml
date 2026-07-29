@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.oa.dao.system.EmployeeMapper">
+    <select id="selectByIdForUpdate" resultType="com.oa.entity.system.EmployeeEntity">
+        SELECT id, username, name, password_hash, phone, email, department_id, status,
+               is_superuser, created_at, updated_at
+        FROM t_employee
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+</mapper>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.oa.dao.system.DepartmentMapper">
+    <resultMap id="departmentResultMap" type="com.oa.entity.system.DepartmentEntity">
+        <id column="id" property="id"/>
+        <result column="parent_id" property="parentId"/>
+        <result column="name" property="name"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="status" property="status"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <sql id="departmentColumns">
+        id, parent_id, name, sort_order, status, created_at, updated_at
+    </sql>
+
+    <select id="selectByIdForUpdate" resultMap="departmentResultMap">
+        SELECT <include refid="departmentColumns"/>
+        FROM t_department
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
+    <select id="selectByIdsForUpdate" resultMap="departmentResultMap">
+        SELECT <include refid="departmentColumns"/>
+        FROM t_department
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY id
+        FOR UPDATE
+    </select>
+</mapper>

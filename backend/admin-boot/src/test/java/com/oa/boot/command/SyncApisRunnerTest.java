@@ -2,6 +2,8 @@ package com.oa.boot.command;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -119,6 +121,39 @@ class SyncApisRunnerTest {
     verify(systemApiService, never()).sync(org.mockito.ArgumentMatchers.anyList());
   }
 
+  @Test
+  void Operation摘要为空时同步失败() {
+    assertInvalidDefinition("/api/orders", "   ", "描述");
+  }
+
+  @Test
+  void Operation摘要超过100字符时同步失败() {
+    assertInvalidDefinition("/api/orders", "a".repeat(101), "描述");
+  }
+
+  @Test
+  void 接口路径超过255字符时同步失败() {
+    assertInvalidDefinition("/api/" + "a".repeat(251), "查询订单", "描述");
+  }
+
+  @Test
+  void Operation描述超过500字符时同步失败() {
+    assertInvalidDefinition("/api/orders", "查询订单", "a".repeat(501));
+  }
+
+  @Test
+  void 接口定义边界长度可以同步() {
+    String path = "/api/" + "a".repeat(250);
+    HandlerMethod handlerMethod = operationHandler("a".repeat(100), "b".repeat(500));
+    when(handlerMapping.getHandlerMethods())
+        .thenReturn(Map.of(mapping(path, HttpMethod.GET), handlerMethod));
+    SyncApisRunner runner = new SyncApisRunner(handlerMapping, systemApiService, "sync-apis");
+
+    runner.run(new DefaultApplicationArguments());
+
+    verify(systemApiService).sync(org.mockito.ArgumentMatchers.anyList());
+  }
+
   private RequestMappingInfo mapping(String path, HttpMethod method) {
     return RequestMappingInfo.paths(path)
         .methods(org.springframework.web.bind.annotation.RequestMethod.valueOf(method.name()))
@@ -128,6 +163,35 @@ class SyncApisRunnerTest {
   private HandlerMethod handler(String methodName) throws NoSuchMethodException {
     Method method = TestController.class.getDeclaredMethod(methodName);
     return new HandlerMethod(new TestController(), method);
+  }
+
+  private HandlerMethod operationHandler(String summary, String description) {
+    HandlerMethod handlerMethod = mock(HandlerMethod.class);
+    Operation operation = mock(Operation.class);
+    when(operation.summary()).thenReturn(summary);
+    when(operation.description()).thenReturn(description);
+    when(handlerMethod.getMethodAnnotation(Operation.class)).thenReturn(operation);
+    try {
+      when(handlerMethod.getMethod()).thenReturn(TestController.class.getDeclaredMethod("order"));
+    } catch (NoSuchMethodException exception) {
+      throw new IllegalStateException(exception);
+    }
+    return handlerMethod;
+  }
+
+  private void assertInvalidDefinition(String path, String summary, String description) {
+    HandlerMethod handlerMethod = operationHandler(summary, description);
+    when(handlerMapping.getHandlerMethods())
+        .thenReturn(Map.of(mapping(path, HttpMethod.GET), handlerMethod));
+    SyncApisRunner runner = new SyncApisRunner(handlerMapping, systemApiService, "sync-apis");
+
+    BusinessException exception =
+        assertThrows(BusinessException.class, () -> runner.run(new DefaultApplicationArguments()));
+
+    assertEquals(ExceptionCode.SYSTEM_API_DEFINITION_INVALID, exception.getExceptionCode());
+    assertTrue(exception.getMessage().contains("TestController#order"));
+    assertTrue(exception.getMessage().contains(path));
+    verify(systemApiService, never()).sync(org.mockito.ArgumentMatchers.anyList());
   }
 
   static class TestController {

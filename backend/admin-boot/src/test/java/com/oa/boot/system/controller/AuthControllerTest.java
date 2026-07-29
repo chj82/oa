@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.oa.action.controller.system.AuthController;
 import com.oa.boot.advice.GlobalExceptionHandler;
-import com.oa.common.constant.AuthenticationConstants;
+import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.exception.BusinessException;
 import com.oa.common.model.common.enums.ExceptionCode;
@@ -23,6 +23,7 @@ import com.oa.common.model.system.vo.CurrentEmployeeVO;
 import com.oa.common.response.ApiResult;
 import com.oa.service.system.AuthService;
 import com.oa.service.system.SessionService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -45,6 +46,11 @@ class AuthControllerTest {
         MockMvcBuilders.standaloneSetup(new AuthController(authService, sessionService, false))
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
+  }
+
+  @AfterEach
+  void tearDown() {
+    CurrentEmployeeContext.clear();
   }
 
   @Test
@@ -156,15 +162,14 @@ class AuthControllerTest {
   }
 
   @Test
-  void 当前员工接口返回请求属性() throws Exception {
+  void 当前员工接口返回线程上下文() throws Exception {
     CurrentEmployeeVO session = new CurrentEmployeeVO();
     session.setId(7L);
     session.setUsername("user");
+    CurrentEmployeeContext.set(session);
 
     mockMvc
-        .perform(
-            get("/api/auth/current")
-                .requestAttr(AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE, session))
+        .perform(get("/api/auth/current"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.details.id").value(7L));
   }

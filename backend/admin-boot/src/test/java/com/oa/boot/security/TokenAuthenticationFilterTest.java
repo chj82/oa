@@ -7,13 +7,16 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.oa.common.constant.AuthenticationConstants;
+import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.cache.LoginSessionCache;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
+import com.oa.common.model.system.vo.ResourceVO;
+import com.oa.service.system.PermissionService;
 import com.oa.service.system.SessionService;
 import jakarta.servlet.FilterChain;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -24,13 +27,20 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 class TokenAuthenticationFilterTest {
   @Mock private SessionService sessionService;
+  @Mock private PermissionService permissionService;
   @Mock private FilterChain chain;
   private TokenAuthenticationFilter filter;
 
   @BeforeEach
   void setUp() {
     MockitoAnnotations.openMocks(this);
-    filter = new TokenAuthenticationFilter(sessionService, "http://localhost:3000/");
+    filter =
+        new TokenAuthenticationFilter(sessionService, permissionService, "http://localhost:3000/");
+  }
+
+  @AfterEach
+  void tearDown() {
+    CurrentEmployeeContext.clear();
   }
 
   @Test
@@ -120,19 +130,21 @@ class TokenAuthenticationFilterTest {
   }
 
   @Test
-  void 有效Cookie设置请求员工并在请求结束清理() throws Exception {
+  void 有效Cookie设置当前员工并在请求结束清理() throws Exception {
     LoginSessionCache session = new LoginSessionCache();
     session.setEmployeeId(7L);
     when(sessionService.getAndRefresh("token")).thenReturn(session);
+    ResourceVO resource = new ResourceVO();
+    resource.setId(11L);
+    when(permissionService.getResources(7L)).thenReturn(java.util.List.of(resource));
     MockHttpServletRequest request = request("GET", "/api/auth/current");
     request.setCookies(new jakarta.servlet.http.Cookie("ADMIN_TOKEN", "token"));
     MockHttpServletResponse response = new MockHttpServletResponse();
     org.mockito.Mockito.doAnswer(
             invocation -> {
-              CurrentEmployeeVO employee =
-                  (CurrentEmployeeVO)
-                      request.getAttribute(AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE);
+              CurrentEmployeeVO employee = CurrentEmployeeContext.get();
               assertEquals(7L, employee.getId());
+              assertEquals(11L, employee.getResources().get(0).getId());
               return null;
             })
         .when(chain)
@@ -141,7 +153,20 @@ class TokenAuthenticationFilterTest {
     filter.doFilter(request, response, chain);
 
     verify(chain).doFilter(request, response);
-    assertNull(request.getAttribute(AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE));
+    assertNull(CurrentEmployeeContext.get());
+  }
+
+  @Test
+  void 非当前员工接口不加载完整资源树() throws Exception {
+    LoginSessionCache session = new LoginSessionCache();
+    session.setEmployeeId(7L);
+    when(sessionService.getAndRefresh("token")).thenReturn(session);
+    MockHttpServletRequest request = request("GET", "/api/system/employees/page");
+    request.setCookies(new jakarta.servlet.http.Cookie("ADMIN_TOKEN", "token"));
+
+    filter.doFilter(request, new MockHttpServletResponse(), chain);
+
+    verify(permissionService, never()).getResources(7L);
   }
 
   @Test
@@ -164,7 +189,24 @@ class TokenAuthenticationFilterTest {
   }
 
   @Test
-  void 下游数据访问异常不由认证过滤器吞掉且仍清理请求属性() throws Exception {
+  void 当前员工权限缓存不可用返回503且失败关闭() throws Exception {
+    LoginSessionCache session = new LoginSessionCache();
+    session.setEmployeeId(7L);
+    when(sessionService.getAndRefresh("token")).thenReturn(session);
+    when(permissionService.getResources(7L))
+        .thenThrow(new AuthenticationInfrastructureException("redis unavailable"));
+    MockHttpServletRequest request = request("GET", "/api/auth/current");
+    request.setCookies(new jakarta.servlet.http.Cookie("ADMIN_TOKEN", "token"));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, chain);
+
+    assertEquals(503, response.getStatus());
+    verify(chain, never()).doFilter(request, response);
+  }
+
+  @Test
+  void 下游数据访问异常不由认证过滤器吞掉且仍清理当前员工() throws Exception {
     LoginSessionCache session = new LoginSessionCache();
     session.setEmployeeId(7L);
     when(sessionService.getAndRefresh("token")).thenReturn(session);
@@ -177,7 +219,7 @@ class TokenAuthenticationFilterTest {
 
     assertThrows(
         DataAccessResourceFailureException.class, () -> filter.doFilter(request, response, chain));
-    assertNull(request.getAttribute(AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE));
+    assertNull(CurrentEmployeeContext.get());
   }
 
   @Test
@@ -218,7 +260,7 @@ class TokenAuthenticationFilterTest {
         }) {
       assertThrows(
           IllegalArgumentException.class,
-          () -> new TokenAuthenticationFilter(sessionService, origin));
+          () -> new TokenAuthenticationFilter(sessionService, permissionService, origin));
     }
   }
 

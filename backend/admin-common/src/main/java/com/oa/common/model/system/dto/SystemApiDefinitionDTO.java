@@ -1,14 +1,22 @@
 package com.oa.common.model.system.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 /** 从 Spring MVC Handler 扫描得到的系统接口定义。 */
 public class SystemApiDefinitionDTO {
   /** 接口名称，来源于 OpenAPI Operation 摘要。 */
+  @NotBlank
+  @Size(max = 100)
   private String name;
 
   /** Spring MVC 路由模板。 */
+  @NotBlank
+  @Size(max = 255)
   private String path;
 
   /** 接口描述，来源于 OpenAPI Operation 描述。 */
+  @Size(max = 500)
   private String description;
 
   public SystemApiDefinitionDTO() {}

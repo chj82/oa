@@ -1,6 +1,7 @@
 package com.oa.common.model.system.vo;
 
 import com.oa.common.model.system.enums.SystemStatus;
+import java.time.LocalDateTime;
 
 /** 角色展示模型。 */
 public class RoleVO {
@@ -18,6 +19,12 @@ public class RoleVO {
 
   /** 角色状态。 */
   private SystemStatus status;
+
+  /** 创建时间。 */
+  private LocalDateTime createdAt;
+
+  /** 更新时间。 */
+  private LocalDateTime updatedAt;
 
   public RoleVO() {}
 
@@ -59,5 +66,21 @@ public class RoleVO {
 
   public void setStatus(SystemStatus status) {
     this.status = status;
+  }
+
+  public LocalDateTime getCreatedAt() {
+    return createdAt;
+  }
+
+  public void setCreatedAt(LocalDateTime createdAt) {
+    this.createdAt = createdAt;
+  }
+
+  public LocalDateTime getUpdatedAt() {
+    return updatedAt;
+  }
+
+  public void setUpdatedAt(LocalDateTime updatedAt) {
+    this.updatedAt = updatedAt;
   }
 }

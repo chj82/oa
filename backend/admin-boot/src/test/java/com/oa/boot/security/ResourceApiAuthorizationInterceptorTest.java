@@ -7,11 +7,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.oa.common.constant.AuthenticationConstants;
+import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
 import com.oa.service.system.PermissionService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -29,6 +30,11 @@ class ResourceApiAuthorizationInterceptorTest {
   void setUp() {
     MockitoAnnotations.openMocks(this);
     interceptor = new ResourceApiAuthorizationInterceptor(permissionService);
+  }
+
+  @AfterEach
+  void tearDown() {
+    CurrentEmployeeContext.clear();
   }
 
   /** 拦截器直接执行且缺少认证上下文时返回 401。 */
@@ -141,7 +147,7 @@ class ResourceApiAuthorizationInterceptorTest {
     MockHttpServletRequest request = new MockHttpServletRequest("GET", requestUri);
     request.setAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE, matchingPattern);
     if (employee != null) {
-      request.setAttribute(AuthenticationConstants.CURRENT_EMPLOYEE_ATTRIBUTE, employee);
+      CurrentEmployeeContext.set(employee);
     }
     return request;
   }

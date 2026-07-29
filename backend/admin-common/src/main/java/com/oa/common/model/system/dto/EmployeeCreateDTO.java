@@ -4,26 +4,33 @@ import com.oa.common.model.system.enums.SystemStatus;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
-/** 员工新增或修改请求。 */
-public class EmployeeSaveDTO {
-  /** 员工ID，新增时为空。 */
-  private Long id;
-
+/** 员工新增请求。 */
+public class EmployeeCreateDTO {
   /** 登录用户名。 */
-  @NotBlank private String username;
+  @NotBlank
+  @Size(max = 64)
+  private String username;
 
   /** 员工姓名。 */
-  @NotBlank private String name;
+  @NotBlank
+  @Size(max = 100)
+  private String name;
 
-  /** 登录密码，修改且不重置密码时为空。 */
+  /** 登录密码。 */
+  @NotBlank
+  @Size(min = 8, max = 72)
   private String password;
 
   /** 手机号。 */
+  @Size(max = 32)
   private String phone;
 
   /** 邮箱。 */
-  @Email private String email;
+  @Email
+  @Size(max = 255)
+  private String email;
 
   /** 所属部门ID。 */
   @NotNull private Long departmentId;
@@ -34,15 +41,7 @@ public class EmployeeSaveDTO {
   /** 是否为超级管理员。 */
   private boolean superuser;
 
-  public EmployeeSaveDTO() {}
-
-  public Long getId() {
-    return id;
-  }
-
-  public void setId(Long id) {
-    this.id = id;
-  }
+  public EmployeeCreateDTO() {}
 
   public String getUsername() {
     return username;

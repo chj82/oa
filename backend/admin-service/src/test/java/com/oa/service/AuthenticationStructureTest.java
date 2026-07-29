@@ -39,7 +39,9 @@ class AuthenticationStructureTest {
     for (String field : List.of("employeeId", "username", "name", "superuser")) {
       assertTrue(
           source.matches(
-              "(?s).*/\\*\\*[^*]*[\\u4e00-\\u9fa5][^*]*\\*/\\s+private [^;]+ " + field + ";.*"));
+              "(?s).*/\\*\\*[^*]*[\\u4e00-\\u9fa5][^*]*\\*/\\s+(?:@[^\\n]+\\s+)*private [^;]+ "
+                  + field
+                  + ";.*"));
       assertTrue(
           source.contains(
               "get" + Character.toUpperCase(field.charAt(0)) + field.substring(1) + "()"));
@@ -70,7 +72,9 @@ class AuthenticationStructureTest {
     for (String field : List.of("name", "path", "description")) {
       assertTrue(
           source.matches(
-              "(?s).*/\\*\\*[^*]*[\\u4e00-\\u9fa5][^*]*\\*/\\s+private [^;]+ " + field + ";.*"));
+              "(?s).*/\\*\\*[^*]*[\\u4e00-\\u9fa5][^*]*\\*/\\s+(?:@[^\\n]+\\s+)*private [^;]+ "
+                  + field
+                  + ";.*"));
       assertTrue(
           source.contains(
               "get" + Character.toUpperCase(field.charAt(0)) + field.substring(1) + "()"));

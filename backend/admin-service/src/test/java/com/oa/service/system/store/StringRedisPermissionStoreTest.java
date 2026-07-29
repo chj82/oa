@@ -1,6 +1,7 @@
 package com.oa.service.system.store;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -9,6 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -46,7 +49,7 @@ class StringRedisPermissionStoreTest {
   @Test
   void 读取当前版本缓存使用单次Lua() {
     when(redisTemplate.execute(any(RedisScript.class), any(List.class)))
-        .thenReturn("{\"version\":3,\"apiPaths\":[\"/api/orders\"]}");
+        .thenReturn("{\"version\":3,\"apiPaths\":[\"/api/orders\"],\"resources\":[]}");
 
     EmployeePermissionCache cache = store.getIfCurrent(7L);
 
@@ -60,7 +63,8 @@ class StringRedisPermissionStoreTest {
                 List.of(
                     "admin:permission:version",
                     "admin:permission:7",
-                    "admin:permission:invalidating")));
+                    "admin:permission:invalidating:pending",
+                    "admin:permission:invalidating:lease:")));
     assertTrue(script.getValue().getScriptAsString().contains("cache.version"));
   }
 
@@ -93,24 +97,63 @@ class StringRedisPermissionStoreTest {
     ArgumentCaptor<List<String>> keys = ArgumentCaptor.forClass(List.class);
     verify(redisTemplate).execute(any(RedisScript.class), keys.capture());
     assertEquals(
-        List.of("admin:permission:version", "admin:permission:7", "admin:permission:invalidating"),
+        List.of(
+            "admin:permission:version",
+            "admin:permission:7",
+            "admin:permission:invalidating:pending",
+            "admin:permission:invalidating:lease:"),
         keys.getValue());
   }
 
-  /** 写入员工权限缓存时固定使用一天 TTL。 */
+  /** 仅在版本仍匹配且无活动失效事务时原子写入一天TTL权限缓存。 */
   @Test
-  void 权限缓存写入一天TTL() {
+  void 权限缓存按当前版本原子写入() {
     EmployeePermissionCache cache = new EmployeePermissionCache();
     cache.setVersion(3L);
     cache.setApiPaths(Set.of("/api/orders"));
+    cache.setResources(List.of());
+    when(redisTemplate.execute(
+            any(RedisScript.class),
+            any(List.class),
+            any(String.class),
+            any(String.class),
+            any(String.class)))
+        .thenReturn(1L);
 
-    store.put(7L, cache);
+    assertTrue(store.putIfCurrent(7L, cache));
 
-    verify(valueOperations)
-        .set(
-            eq("admin:permission:7"),
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<RedisScript<Long>> script = ArgumentCaptor.forClass(RedisScript.class);
+    verify(redisTemplate)
+        .execute(
+            script.capture(),
+            eq(
+                List.of(
+                    "admin:permission:version",
+                    "admin:permission:7",
+                    "admin:permission:invalidating:pending",
+                    "admin:permission:invalidating:lease:")),
+            eq("3"),
             org.mockito.ArgumentMatchers.contains("\"version\":3"),
-            eq(Duration.ofDays(1)));
+            eq(Long.toString(Duration.ofDays(1).toMillis())));
+    assertTrue(script.getValue().getScriptAsString().contains("cacheVersion"));
+  }
+
+  @Test
+  void 权限版本变化时拒绝写入重建缓存() {
+    EmployeePermissionCache cache = new EmployeePermissionCache();
+    cache.setVersion(3L);
+    cache.setApiPaths(Set.of("/api/orders"));
+    cache.setResources(List.of());
+    when(redisTemplate.execute(
+            any(RedisScript.class),
+            any(List.class),
+            any(String.class),
+            any(String.class),
+            any(String.class)))
+        .thenReturn(0L);
+
+    assertFalse(store.putIfCurrent(7L, cache));
   }
 
   /** 全局版本不存在时原子初始化为零，失效时通过 INCR 递增。 */
@@ -156,7 +199,8 @@ class StringRedisPermissionStoreTest {
   /** 失效开始、提交和残留恢复都使用原子 Lua，提交同时递增版本并清理标记。 */
   @Test
   void 权限失效标记使用原子Lua维护() {
-    when(redisTemplate.execute(any(RedisScript.class), any(List.class), any(String.class)))
+    when(redisTemplate.execute(
+            any(RedisScript.class), any(List.class), any(String.class), any(String.class)))
         .thenReturn("token-1");
     when(redisTemplate.execute(any(RedisScript.class), any(List.class), eq("token-1")))
         .thenReturn(4L);
@@ -168,6 +212,74 @@ class StringRedisPermissionStoreTest {
     assertEquals(5L, store.retryPendingInvalidation());
   }
 
+  /** 开始失效必须原子写入永久标记和60秒同token租约。 */
+  @Test
+  void 权限失效开始同时写入租约() {
+    when(redisTemplate.execute(
+            any(RedisScript.class), any(List.class), any(String.class), any(String.class)))
+        .thenReturn("token-1");
+
+    store.beginInvalidation();
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<RedisScript<String>> script = ArgumentCaptor.forClass(RedisScript.class);
+    verify(redisTemplate)
+        .execute(
+            script.capture(),
+            eq(
+                List.of(
+                    "admin:permission:version",
+                    "admin:permission:invalidating:pending",
+                    "admin:permission:invalidating:lease:")),
+            any(String.class),
+            eq("60000"));
+    assertTrue(script.getValue().getScriptAsString().contains("SADD', KEYS[2]"));
+    assertTrue(script.getValue().getScriptAsString().contains("'PX', ARGV[2]"));
+  }
+
+  /** 活动租约存在时必须保持失败关闭，不能自动恢复标记。 */
+  @Test
+  void 活动租约存在时不自动恢复() {
+    when(redisTemplate.execute(any(RedisScript.class), any(List.class)))
+        .thenReturn("__PERMISSION_INVALIDATING__");
+
+    assertThrows(AuthenticationInfrastructureException.class, () -> store.getIfCurrent(7L));
+
+    ArgumentCaptor<RedisScript<String>> script = ArgumentCaptor.forClass(RedisScript.class);
+    verify(redisTemplate).execute(script.capture(), any(List.class));
+    assertTrue(script.getValue().getScriptAsString().contains("SMEMBERS', KEYS[3]"));
+    assertTrue(script.getValue().getScriptAsString().contains("EXISTS', KEYS[4]"));
+  }
+
+  /** 租约过期后读取应由Lua递增版本、清标记并按缓存缺失重建。 */
+  @Test
+  void 过期租约自动失效旧版本并返回缓存缺失() {
+    when(redisTemplate.execute(any(RedisScript.class), any(List.class)))
+        .thenReturn("__PERMISSION_CACHE_MISS__");
+
+    assertNull(store.getIfCurrent(7L));
+
+    ArgumentCaptor<RedisScript<String>> script = ArgumentCaptor.forClass(RedisScript.class);
+    verify(redisTemplate).execute(script.capture(), any(List.class));
+    assertTrue(script.getValue().getScriptAsString().contains("INCR', KEYS[1]"));
+    assertTrue(script.getValue().getScriptAsString().contains("SREM', KEYS[3]"));
+  }
+
+  /** 提交完成Redis失败后，租约过期仍可由后续读取安全恢复。 */
+  @Test
+  void 完成失效失败后可由过期租约恢复() {
+    DataAccessResourceFailureException cause = new DataAccessResourceFailureException("连接失败");
+    when(redisTemplate.execute(any(RedisScript.class), any(List.class), eq("token-1")))
+        .thenThrow(cause);
+    assertThrows(
+        AuthenticationInfrastructureException.class, () -> store.completeInvalidation("token-1"));
+
+    reset(redisTemplate);
+    when(redisTemplate.execute(any(RedisScript.class), any(List.class)))
+        .thenReturn("__PERMISSION_CACHE_MISS__");
+    assertNull(store.getIfCurrent(7L));
+  }
+
   /** 回滚只允许清理当前事务持有的失效 token。 */
   @Test
   void 回滚按Token清理失效标记() {
@@ -177,6 +289,45 @@ class StringRedisPermissionStoreTest {
     store.cancelInvalidation("token-1");
 
     verify(redisTemplate).execute(any(RedisScript.class), any(List.class), eq("token-1"));
+  }
+
+  /** 并发事务完成或回滚只能移除自己的token，不能删除整个pending集合。 */
+  @Test
+  void 并发失效事务按Token独立清理() {
+    when(redisTemplate.execute(any(RedisScript.class), any(List.class), eq("token-a")))
+        .thenReturn(4L, 1L);
+
+    store.completeInvalidation("token-a");
+    store.cancelInvalidation("token-a");
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<RedisScript<Long>> scripts = ArgumentCaptor.forClass(RedisScript.class);
+    verify(redisTemplate, times(2)).execute(scripts.capture(), any(List.class), eq("token-a"));
+    String complete = scripts.getAllValues().get(0).getScriptAsString();
+    String cancel = scripts.getAllValues().get(1).getScriptAsString();
+    assertTrue(complete.contains("SREM', KEYS[2], ARGV[1]"));
+    assertTrue(complete.contains("KEYS[3] .. ARGV[1]"));
+    assertTrue(cancel.contains("SREM', KEYS[1], ARGV[1]"));
+    assertTrue(cancel.contains("KEYS[2] .. ARGV[1]"));
+    assertFalse(complete.contains("DEL', KEYS[2])"));
+    assertFalse(cancel.contains("DEL', KEYS[1])"));
+  }
+
+  /** 显式重试只恢复租约已过期token，不得清理仍有活动租约的token。 */
+  @Test
+  void 重试只清理过期Token并保留活动Token() {
+    when(redisTemplate.execute(any(RedisScript.class), any(List.class))).thenReturn(5L);
+
+    store.retryPendingInvalidation();
+
+    ArgumentCaptor<RedisScript<Long>> script = ArgumentCaptor.forClass(RedisScript.class);
+    verify(redisTemplate).execute(script.capture(), any(List.class));
+    String source = script.getValue().getScriptAsString();
+    assertTrue(source.contains("SMEMBERS', KEYS[2]"));
+    assertTrue(source.contains("EXISTS', KEYS[3] .. token"));
+    assertTrue(source.contains("SREM', KEYS[2], token"));
+    assertTrue(source.contains("if recovered then redis.call('INCR'"));
+    assertFalse(source.contains("DEL', KEYS[2]"));
   }
 
   /** 员工重建锁使用 SET NX 和短 TTL，释放时由 Lua 校验持有 token。 */
@@ -229,9 +380,11 @@ class StringRedisPermissionStoreTest {
     EmployeePermissionCache cache = new EmployeePermissionCache();
     cache.setVersion(1L);
     cache.setApiPaths(Set.of("/api/orders"));
+    cache.setResources(List.of());
 
     AuthenticationInfrastructureException exception =
-        assertThrows(AuthenticationInfrastructureException.class, () -> store.put(7L, cache));
+        assertThrows(
+            AuthenticationInfrastructureException.class, () -> store.putIfCurrent(7L, cache));
 
     assertSame(cause, exception.getCause());
   }
@@ -246,9 +399,11 @@ class StringRedisPermissionStoreTest {
     EmployeePermissionCache cache = new EmployeePermissionCache();
     cache.setVersion(1L);
     cache.setApiPaths(Set.of("/api/orders"));
+    cache.setResources(List.of());
 
     AuthenticationInfrastructureException exception =
-        assertThrows(AuthenticationInfrastructureException.class, () -> store.put(7L, cache));
+        assertThrows(
+            AuthenticationInfrastructureException.class, () -> store.putIfCurrent(7L, cache));
 
     assertSame(cause, exception.getCause());
   }
