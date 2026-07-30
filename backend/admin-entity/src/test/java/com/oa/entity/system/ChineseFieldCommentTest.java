@@ -47,7 +47,6 @@ class ChineseFieldCommentTest {
             ResourceStatusDTO.class,
             ResourceApiSaveDTO.class,
             RelationIdsDTO.class,
-            SystemApiDefinitionDTO.class,
             EmployeeVO.class,
             DepartmentVO.class,
             RoleVO.class,

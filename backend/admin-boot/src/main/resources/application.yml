@@ -8,12 +8,12 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${MYSQL_URL:jdbc:mysql://127.0.0.1:3306/oa?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:}
+    password: ${MYSQL_PASSWORD:12345678}
   data:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD:12345678}
       database: ${REDIS_DATABASE:0}
 
 springdoc:
@@ -24,9 +24,6 @@ server:
   port: ${SERVER_PORT:8080}
 
 app:
-  command: ${APP_COMMAND:}
-  initial-admin-username: ${INITIAL_ADMIN_USERNAME:admin}
-  initial-admin-password: ${INITIAL_ADMIN_PASSWORD:}
   security:
     frontend-origin: ${FRONTEND_ORIGIN:http://localhost:3000}
     cookie-secure: ${COOKIE_SECURE:false}

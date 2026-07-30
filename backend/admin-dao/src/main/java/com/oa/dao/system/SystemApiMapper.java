@@ -38,17 +38,6 @@ public interface SystemApiMapper extends BaseMapper<SystemApiEntity> {
             .orderByDesc(SystemApiEntity::getId));
   }
 
-  /** 仅更新接口名称和描述，不修改人工维护的状态。 */
-  default int updateMetadata(long id, String name, String description, LocalDateTime updatedAt) {
-    return update(
-        null,
-        Wrappers.<SystemApiEntity>lambdaUpdate()
-            .eq(SystemApiEntity::getId, id)
-            .set(SystemApiEntity::getName, name)
-            .set(SystemApiEntity::getDescription, description)
-            .set(SystemApiEntity::getUpdatedAt, updatedAt));
-  }
-
   /** 当前状态符合预期时修改状态，避免覆盖并发人工操作。 */
   default int updateStatusIfCurrent(
       long id, int expectedStatus, int newStatus, LocalDateTime updatedAt) {
@@ -74,16 +63,6 @@ public interface SystemApiMapper extends BaseMapper<SystemApiEntity> {
         .stream()
         .map(SystemApiEntity::getId)
         .toList();
-  }
-
-  /** 查询全部系统接口目录。 */
-  default List<SystemApiEntity> selectAll() {
-    return selectList(null);
-  }
-
-  /** 按 Spring MVC 路由模板查询系统接口。 */
-  default SystemApiEntity selectByPath(String path) {
-    return selectOne(Wrappers.<SystemApiEntity>lambdaQuery().eq(SystemApiEntity::getPath, path));
   }
 
   /** 查询全部启用接口的路由模板。 */

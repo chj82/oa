@@ -1,8 +1,6 @@
 package com.oa.service.system.store;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.system.cache.EmployeePermissionCache;
 import java.time.Duration;
@@ -10,7 +8,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -100,13 +97,12 @@ public class StringRedisPermissionStore {
               + "end; return 0");
 
   private final StringRedisTemplate redisTemplate;
-  private final ObjectMapper objectMapper;
+  private final RedisCacheJsonCodec jsonCodec;
 
   public StringRedisPermissionStore(
-      StringRedisTemplate redisTemplate,
-      @Qualifier("loginSessionObjectMapper") ObjectMapper objectMapper) {
+      StringRedisTemplate redisTemplate, RedisCacheJsonCodec jsonCodec) {
     this.redisTemplate = redisTemplate;
-    this.objectMapper = objectMapper;
+    this.jsonCodec = jsonCodec;
   }
 
   /** 单次 Lua 读取全局版本和员工缓存，仅返回版本匹配的缓存。 */
@@ -228,7 +224,7 @@ public class StringRedisPermissionStore {
       throw unavailable();
     }
     try {
-      JsonNode root = objectMapper.readTree(value);
+      JsonNode root = jsonCodec.readTree(value);
       JsonNode version = root == null ? null : root.get("version");
       JsonNode apiPaths = root == null ? null : root.get("apiPaths");
       JsonNode resources = root == null ? null : root.get("resources");
@@ -244,10 +240,10 @@ public class StringRedisPermissionStore {
           || !resources.isArray()) {
         throw unavailable();
       }
-      EmployeePermissionCache cache = objectMapper.treeToValue(root, EmployeePermissionCache.class);
+      EmployeePermissionCache cache = jsonCodec.treeToValue(root, EmployeePermissionCache.class);
       validateCache(cache);
       return cache;
-    } catch (JsonProcessingException | RuntimeException exception) {
+    } catch (RuntimeException exception) {
       if (exception instanceof AuthenticationInfrastructureException infrastructureException) {
         throw infrastructureException;
       }
@@ -257,8 +253,8 @@ public class StringRedisPermissionStore {
 
   private String writeCache(EmployeePermissionCache cache) {
     try {
-      return objectMapper.writeValueAsString(cache);
-    } catch (JsonProcessingException | RuntimeException exception) {
+      return jsonCodec.write(cache);
+    } catch (RuntimeException exception) {
       throw new AuthenticationInfrastructureException("认证服务暂不可用", exception);
     }
   }

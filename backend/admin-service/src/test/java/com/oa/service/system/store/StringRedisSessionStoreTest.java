@@ -36,7 +36,7 @@ class StringRedisSessionStoreTest {
     redisTemplate = mock(StringRedisTemplate.class);
     valueOperations = mock(ValueOperations.class);
     when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-    store = new StringRedisSessionStore(redisTemplate, new ObjectMapper());
+    store = new StringRedisSessionStore(redisTemplate, new RedisCacheJsonCodec(new ObjectMapper()));
   }
 
   @Test

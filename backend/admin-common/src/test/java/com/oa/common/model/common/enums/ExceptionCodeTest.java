@@ -35,12 +35,12 @@ class ExceptionCodeTest {
   void 业务异常持有统一异常枚举() {
     BusinessException defaultException = new BusinessException(ExceptionCode.FORBIDDEN);
     BusinessException contextualException =
-        new BusinessException(ExceptionCode.SYSTEM_API_PATH_DUPLICATED, "接口路径重复：/api/orders");
+        new BusinessException(ExceptionCode.RESOURCE_PATH_DUPLICATED, "资源路径重复：/system/orders");
 
     assertEquals(ExceptionCode.FORBIDDEN, defaultException.getExceptionCode());
     assertEquals(ExceptionCode.FORBIDDEN.getName(), defaultException.getMessage());
-    assertEquals(ExceptionCode.SYSTEM_API_PATH_DUPLICATED, contextualException.getExceptionCode());
-    assertEquals("接口路径重复：/api/orders", contextualException.getMessage());
+    assertEquals(ExceptionCode.RESOURCE_PATH_DUPLICATED, contextualException.getExceptionCode());
+    assertEquals("资源路径重复：/system/orders", contextualException.getMessage());
   }
 
   /** 统一响应使用数字异常码和枚举中文名称。 */

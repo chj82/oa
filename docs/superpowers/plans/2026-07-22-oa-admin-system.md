@@ -2,6 +2,8 @@
 
 > **执行要求：** 按任务顺序实施，每个行为先写失败测试再写生产代码；用户未要求 Git 提交，因此所有提交步骤省略。
 
+> **后续纠正：** 本计划中接口扫描和代码初始化相关步骤已由 [OA 系统 SQL 初始化实施计划](2026-07-30-sql-system-initialization.md) 取代；系统基础数据和接口目录统一通过 SQL 初始化。
+
 **目标：** 从空仓实现 Java 17 + Spring Boot + MyBatis-Plus + MySQL + Redis 后端，以及 Next.js 管理后台前端。
 
 **架构：** 后端按 `admin-common → admin-entity → admin-dao → admin-service → admin-action → admin-boot` 单向依赖拆分 Maven 模块，包名前缀为 `com.oa`。系统功能在各层 `system` 包中实现；登录使用 Redis 随机会话 Token 和 HttpOnly Cookie；接口权限按员工角色资源关联的接口路径判断。

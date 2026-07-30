@@ -15,11 +15,14 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.system.cache.EmployeePermissionCache;
+import com.oa.common.model.system.enums.ResourceType;
+import com.oa.common.model.system.enums.SystemStatus;
+import com.oa.common.model.system.vo.ResourceVO;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,7 +45,8 @@ class StringRedisPermissionStoreTest {
     redisTemplate = mock(StringRedisTemplate.class);
     valueOperations = mock(ValueOperations.class);
     when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-    store = new StringRedisPermissionStore(redisTemplate, new ObjectMapper());
+    store =
+        new StringRedisPermissionStore(redisTemplate, new RedisCacheJsonCodec(new ObjectMapper()));
   }
 
   /** 单次 Lua 同时读取全局版本和员工缓存，版本匹配才返回缓存。 */
@@ -154,6 +158,41 @@ class StringRedisPermissionStoreTest {
         .thenReturn(0L);
 
     assertFalse(store.putIfCurrent(7L, cache));
+  }
+
+  /** 实际写入 Redis 的权限 JSON 必须能够完整恢复资源树和日期时间。 */
+  @Test
+  void 权限缓存通过Redis字符串完整往返() {
+    EmployeePermissionCache source = permissionCacheWithResourceTree();
+    when(redisTemplate.execute(
+            any(RedisScript.class),
+            any(List.class),
+            any(String.class),
+            any(String.class),
+            any(String.class)))
+        .thenReturn(1L);
+
+    assertTrue(store.putIfCurrent(7L, source));
+
+    ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
+    verify(redisTemplate)
+        .execute(
+            any(RedisScript.class),
+            any(List.class),
+            eq("3"),
+            json.capture(),
+            eq(Long.toString(Duration.ofDays(1).toMillis())));
+    reset(redisTemplate);
+    when(redisTemplate.execute(any(RedisScript.class), any(List.class)))
+        .thenReturn(json.getValue());
+
+    EmployeePermissionCache result = store.getIfCurrent(7L);
+
+    ResourceVO directory = result.getResources().get(0);
+    assertEquals(ResourceType.DIRECTORY, directory.getType());
+    assertEquals(SystemStatus.ENABLED, directory.getStatus());
+    assertEquals(LocalDateTime.of(2026, 7, 30, 9, 10, 11), directory.getCreatedAt());
+    assertEquals(ResourceType.MENU, directory.getChildren().get(0).getType());
   }
 
   /** 全局版本不存在时原子初始化为零，失效时通过 INCR 递增。 */
@@ -367,16 +406,36 @@ class StringRedisPermissionStoreTest {
     AuthenticationInfrastructureException exception =
         assertThrows(AuthenticationInfrastructureException.class, () -> store.getIfCurrent(7L));
 
-    assertTrue(exception.getCause() instanceof JsonProcessingException);
+    assertTrue(exception.getCause() instanceof RedisCacheJsonException);
   }
 
   /** 权限缓存序列化失败时转换为认证基础设施异常。 */
   @Test
-  void 序列化失败转换为认证基础设施异常() throws Exception {
-    ObjectMapper failedObjectMapper = mock(ObjectMapper.class);
-    JsonProcessingException cause = new JsonProcessingException("序列化失败") {};
-    when(failedObjectMapper.writeValueAsString(any())).thenThrow(cause);
-    store = new StringRedisPermissionStore(redisTemplate, failedObjectMapper);
+  void 序列化失败转换为认证基础设施异常() {
+    RedisCacheJsonCodec failedCodec = mock(RedisCacheJsonCodec.class);
+    IllegalArgumentException cause = new IllegalArgumentException("序列化失败");
+    when(failedCodec.write(any()))
+        .thenThrow(new RedisCacheJsonException("Redis缓存JSON序列化失败", cause));
+    store = new StringRedisPermissionStore(redisTemplate, failedCodec);
+    EmployeePermissionCache cache = new EmployeePermissionCache();
+    cache.setVersion(1L);
+    cache.setApiPaths(Set.of("/api/orders"));
+    cache.setResources(List.of());
+
+    AuthenticationInfrastructureException exception =
+        assertThrows(
+            AuthenticationInfrastructureException.class, () -> store.putIfCurrent(7L, cache));
+
+    assertSame(cause, exception.getCause().getCause());
+  }
+
+  /** Codec 抛出非受检序列化异常时也统一转换为认证基础设施异常。 */
+  @Test
+  void 非受检序列化异常失败关闭() {
+    RedisCacheJsonCodec failedCodec = mock(RedisCacheJsonCodec.class);
+    IllegalStateException cause = new IllegalStateException("序列化器状态异常");
+    when(failedCodec.write(any())).thenThrow(cause);
+    store = new StringRedisPermissionStore(redisTemplate, failedCodec);
     EmployeePermissionCache cache = new EmployeePermissionCache();
     cache.setVersion(1L);
     cache.setApiPaths(Set.of("/api/orders"));
@@ -389,22 +448,32 @@ class StringRedisPermissionStoreTest {
     assertSame(cause, exception.getCause());
   }
 
-  /** Jackson 抛出非受检序列化异常时也统一转换为认证基础设施异常。 */
-  @Test
-  void 非受检序列化异常失败关闭() throws Exception {
-    ObjectMapper failedObjectMapper = mock(ObjectMapper.class);
-    IllegalStateException cause = new IllegalStateException("序列化器状态异常");
-    when(failedObjectMapper.writeValueAsString(any())).thenThrow(cause);
-    store = new StringRedisPermissionStore(redisTemplate, failedObjectMapper);
+  private EmployeePermissionCache permissionCacheWithResourceTree() {
+    ResourceVO menu = resource(2L, 1L, ResourceType.MENU, "员工管理");
+    ResourceVO directory = resource(1L, 0L, ResourceType.DIRECTORY, "系统管理");
+    directory.setCreatedAt(LocalDateTime.of(2026, 7, 30, 9, 10, 11));
+    directory.setChildren(List.of(menu));
+
     EmployeePermissionCache cache = new EmployeePermissionCache();
-    cache.setVersion(1L);
-    cache.setApiPaths(Set.of("/api/orders"));
-    cache.setResources(List.of());
+    cache.setVersion(3L);
+    cache.setApiPaths(Set.of("/api/system/resource/tree"));
+    cache.setResources(List.of(directory));
+    return cache;
+  }
 
-    AuthenticationInfrastructureException exception =
-        assertThrows(
-            AuthenticationInfrastructureException.class, () -> store.putIfCurrent(7L, cache));
-
-    assertSame(cause, exception.getCause());
+  private ResourceVO resource(long id, long parentId, ResourceType type, String name) {
+    ResourceVO resource = new ResourceVO();
+    resource.setId(id);
+    resource.setParentId(parentId);
+    resource.setType(type);
+    resource.setName(name);
+    resource.setCode("RESOURCE_" + id);
+    resource.setPath("/resource/" + id);
+    resource.setIcon("menu");
+    resource.setSortOrder((int) id);
+    resource.setVisible(true);
+    resource.setStatus(SystemStatus.ENABLED);
+    resource.setChildren(List.of());
+    return resource;
   }
 }

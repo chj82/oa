@@ -27,7 +27,7 @@
 - 权限相关数据库写入调用 `PermissionService.invalidateAll()` 时，必须将当前事务 token 加入无 TTL 的 pending Set，并写入 `admin:permission:invalidating:lease:<token>` 独立 60 秒租约；全局数据库事务默认超时固定为 30 秒，必须小于租约 TTL。任一活动租约存在期间权限缓存读取失败关闭并返回 `503`。读取、开始和显式重试只清理租约已过期的 token；一次扫描发现一个或多个过期 token 时全局版本只递增一次。提交后递增版本并只移除当前 token 和租约，回滚同样只移除当前 token 和租约，禁止清理其他并发事务的活动 token。pending Set 永不设置 TTL。
 - 同一员工的权限缓存重建使用单机 Redis 短期锁串行化，锁键为 `admin:permission:rebuild-lock:<employeeId>`，TTL 为 10 秒；持锁方必须二次读取缓存后再查数据库，并使用 token 校验 Lua 释放。未持锁方只允许有限短轮询缓存，不得访问 Mapper，轮询结束仍未命中时返回 `503`。
 - Redis 权限缓存 Lua 和版本、锁操作的异常空返回，以及权限缓存 JSON 缺字段、字段类型错误、序列化或反序列化失败，都必须转换为 `AuthenticationInfrastructureException` 并返回 `503`；普通缓存未命中使用明确的 Lua 状态值表达，不得与异常空返回混用。
-- 接口同步、员工状态或超级管理员标记、员工角色、角色状态、角色资源、资源状态、类型或父级、资源接口关联、接口状态或路径发生实际变化后，必须调用 `PermissionService.invalidateAll()`，在数据库事务成功提交后通过 Redis `INCR` 原子递增全局版本。资源新增尚未被任何角色授权，不刷新权限；资源名称、编码、路径、图标、排序和可见性等纯展示字段修改也不刷新权限。任务 5 新增相关写 Service 时必须落实该调用并测试；不得只依赖 1 天 TTL。
+- 员工状态或超级管理员标记、员工角色、角色状态、角色资源、资源状态、类型或父级、资源接口关联、接口状态或路径发生实际变化后，必须调用 `PermissionService.invalidateAll()`，在数据库事务成功提交后通过 Redis `INCR` 原子递增全局版本。资源新增尚未被任何角色授权，不刷新权限；资源名称、编码、路径、图标、排序和可见性等纯展示字段修改也不刷新权限。任务 5 新增相关写 Service 时必须落实该调用并测试；不得只依赖 1 天 TTL。
 - 超级管理员标记写入登录会话；任务 5 修改该标记时，除递增权限版本外还必须调用 `SessionService.invalidateEmployeeSessions()` 使该员工全部旧会话失效。
 - 基础版没有单独的 `built_in` 字段，所有当前 `is_superuser = 1` 的员工均视为受保护超级管理员，禁止降级、删除和禁用；员工禁止删除自己。
 - Redis 权限缓存不可用时鉴权失败关闭并返回 `503`，不得降级为每请求查数据库，也不得返回 `403` 混淆为业务无权限。
@@ -58,6 +58,7 @@
 - 唯一索引使用 `udx_` 前缀，普通索引使用 `idx_` 前缀。
 - 不使用数据库外键和级联；关联完整性由 Service 显式维护。
 - SQL 仅存放在 `backend/sql/` 并由人工审核执行；应用启动不得自动执行 SQL。
+- 系统基础数据和接口目录只通过 SQL 初始化，禁止使用 Runner、Controller 扫描或其他运行时代码初始化。新增、删除或修改 Controller 接口路径时，必须同步新增数据变更 SQL，维护 `t_system_api`、`t_system_resource` 和 `t_resource_api`。
 - 不引入 Flyway、Liquibase 或其他自动迁移机制。
 - 时间字段由应用写入，不依赖数据库默认时间。
 - 创建时间、更新时间等日期时间列使用 MySQL `DATETIME(3)`，Entity 使用 `LocalDateTime`；仅日期字段才使用 `DATE` / `LocalDate`，不使用旧 `java.util.Date`。

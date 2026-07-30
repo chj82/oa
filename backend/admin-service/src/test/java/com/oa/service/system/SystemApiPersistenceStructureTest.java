@@ -23,7 +23,6 @@ class SystemApiPersistenceStructureTest {
     assertTrue(source.contains("SystemApiEntity::getName"));
     assertTrue(source.contains("SystemApiEntity::getPath"));
     assertTrue(source.contains("SystemApiEntity::getStatus"));
-    assertTrue(source.contains("updateMetadata"));
     assertTrue(source.contains("updateStatusIfCurrent"));
     assertFalse(source.toUpperCase().contains(" JOIN "));
     assertFalse(source.toUpperCase().contains("FOR UPDATE"));
@@ -42,6 +41,7 @@ class SystemApiPersistenceStructureTest {
     assertFalse(source.contains("Wrappers"));
     assertFalse(source.contains("QueryWrapper"));
     assertFalse(source.contains("LambdaQueryWrapper"));
+    assertFalse(source.contains("void sync("));
     assertFalse(source.toUpperCase().contains(" JOIN "));
     assertFalse(source.toUpperCase().contains("FOR UPDATE"));
   }

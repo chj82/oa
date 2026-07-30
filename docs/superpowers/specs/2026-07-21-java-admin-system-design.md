@@ -281,7 +281,7 @@ frontend/
 - `description`
 - `status`
 
-接口不再定义独立编码和 HTTP Method 字段，`path` 是唯一接口资源标识。鉴权时直接使用 Spring MVC 已匹配的路由模板定位接口，不读取请求方法。接口名称和描述取自 OpenAPI `@Operation`，路径取自 Spring MVC Handler 映射。管理端只提供接口目录分页、详情和启停能力，不能新增、修改或删除由代码同步的名称、路径和描述。接口仅在 `status = ENABLED` 时有效。
+接口不再定义独立编码和 HTTP Method 字段，`path` 是唯一接口资源标识。鉴权时直接使用 Spring MVC 已匹配的路由模板定位接口，不读取请求方法。接口名称、路径和描述由 `backend/sql/` 下的数据 SQL 维护。管理端只提供接口目录分页、详情和启停能力，不能新增、修改或删除 SQL 维护的名称、路径和描述。接口仅在 `status = ENABLED` 时有效。
 
 由于权限只按路径区分，不同接口必须使用不同路径，即使 HTTP 方法不同也不能复用同一路径。例如分页查询使用 `/employees/page`，新增使用 `/employees/create`，不得用 GET 和 POST 共用 `/employees` 表达两个独立权限。
 
@@ -449,14 +449,14 @@ CREATE TABLE t_resource_api (
 - 权限缓存键为 `admin:permission:<employeeId>`，值为 `EmployeePermissionCache`，保存生成时的全局版本、可访问路由模板集合和有效资源树，TTL 为 1 天；不得使用 `Map`。当前员工接口从该缓存返回资源树，其他受保护接口不组装完整资源树。
 - 全局版本键为 `admin:permission:version`，不存在时由 Lua 原子初始化为 `0`。缓存读取使用单次 Lua 同时比较缓存版本和全局版本；版本一致才命中，缓存命中时不得访问数据库或开启数据库事务。
 - 缓存缺失或版本不一致时才执行员工、员工角色、启用角色、角色资源、有效资源及父资源、资源接口、启用接口路径的单表查询。同一员工使用 `admin:permission:rebuild-lock:<employeeId>` 的 10 秒 Redis 短期锁串行重建，持锁方二次读取缓存后才查数据库并使用 token 校验 Lua 释放锁；未持锁方只有限短轮询缓存，不得访问数据库，仍未命中时返回 `503`。重建前读取全局版本，重建后通过 `putIfCurrent` 单次 Lua 恢复过期 token、拒绝活动失效事务并再次核对全局版本，只有原子写入成功才能使用重建结果；版本变化或失效事务活动时当前请求返回 `503`。
-- 接口同步以及员工状态或超级管理员标记、员工角色、角色状态、角色资源、资源状态、类型或父级、资源接口关联、接口状态或路径发生实际变化后，必须调用 `PermissionService.invalidateAll()`。资源新增尚未授权，不刷新权限；资源名称、编码、路径、图标、排序和可见性等纯展示字段修改不刷新权限。调用失效后将事务 token 加入无 TTL 的 `admin:permission:invalidating:pending` Set，并写入 `admin:permission:invalidating:lease:<token>` 独立 60 秒租约；数据库事务默认超时固定为 30 秒并小于租约 TTL。任一活动租约存在时鉴权返回 `503`。读取、开始和显式重试只清理租约已过期的 token，一次扫描发现多个过期 token 时只递增一次全局版本；提交后递增版本并只移除当前 token 和租约，回滚只移除当前 token 和租约，禁止清理其他并发事务。任务 5 的所有相关写 Service 必须实现并测试该契约。
+- 员工状态或超级管理员标记、员工角色、角色状态、角色资源、资源状态、类型或父级、资源接口关联、接口状态或路径发生实际变化后，必须调用 `PermissionService.invalidateAll()`。资源新增尚未授权，不刷新权限；资源名称、编码、路径、图标、排序和可见性等纯展示字段修改不刷新权限。调用失效后将事务 token 加入无 TTL 的 `admin:permission:invalidating:pending` Set，并写入 `admin:permission:invalidating:lease:<token>` 独立 60 秒租约；数据库事务默认超时固定为 30 秒并小于租约 TTL。任一活动租约存在时鉴权返回 `503`。读取、开始和显式重试只清理租约已过期的 token，一次扫描发现多个过期 token 时只递增一次全局版本；提交后递增版本并只移除当前 token 和租约，回滚只移除当前 token 和租约，禁止清理其他并发事务。任务 5 的所有相关写 Service 必须实现并测试该契约。
 - Redis Lua、版本与锁操作出现异常空结果，或权限缓存 JSON 缺少字段、字段类型错误、序列化或反序列化失败时，统一转换为认证基础设施异常并返回 `503`。普通缓存未命中使用明确 Lua 状态值，不与异常空结果混用。
 - 超级管理员标记同时存在于登录会话中；任务 5 修改该标记时，除递增权限版本外还必须调用 `SessionService.invalidateEmployeeSessions()` 使该员工全部旧会话失效。
 - Redis 权限缓存不可用时鉴权失败关闭并返回 `503`，不得降级为每请求查询数据库，也不得用 `403` 掩盖基础设施故障。
 
 角色授权树中，父节点半选只用于界面展示。数据库保存实际选中的资源；返回导航时根据已授权菜单向上补齐有效父目录，不能因父节点半选而授予整个子树。
 
-## 8. 接口扫描与同步
+## 8. 接口目录维护
 
 Controller 只使用 Spring MVC 映射和 `@Tag`、`@Operation` 等 OpenAPI 注解。接口路径就是接口资源标识，不再声明 `@ApiPermission`、独立接口编码或访问类型：
 
@@ -468,26 +468,9 @@ public EmployeeVO create(@Valid @RequestBody EmployeeCreateDTO request) {
 }
 ```
 
-本地同步命令由 Spring Boot Runner 调用 `RequestMappingHandlerMapping` 扫描 Handler，并读取 OpenAPI 注解补充接口名称和描述：
+接口目录不从 Controller 扫描，不提供运行时同步命令。新增、删除或修改受保护 Controller 接口时，开发人员必须同步新增一份 `backend/sql/` 数据变更 SQL，显式维护接口目录、系统资源和资源接口关联。公开和仅登录白名单中的 Handler 不写入接口目录。
 
-```bash
-./mvnw -pl admin-boot -am spring-boot:run \
-  -Dspring-boot.run.arguments=--app.command=sync-apis
-```
-
-同步规则：
-
-- 新接口自动新增。
-- 名称或描述变化时按路径更新。
-- 路径变化视为新接口；旧路径状态改为 `DISABLED`，不直接删除接口或资源关联。
-- 数据库存在但代码已删除的接口状态改为 `DISABLED`。
-- 同步命令可重复执行，不产生重复数据。
-- 每个路径只能对应一个 Handler；即使 HTTP 方法不同，重复路径也必须使同步失败。
-- 每个受保护 Handler 必须恰好声明一个 HTTP Method；未声明 Method 或同时声明多个 Method 都必须使同步失败。
-- 同步过程不得自动重新启用已禁用接口；公开和仅登录白名单中的 Handler 不写入接口目录。
-- `t_resource_api` 由管理端维护，同步过程不得自动授予权限。
-- 同步新增启用路径或将代码中已移除的启用路径禁用时，必须在任何数据库写入前建立权限失效标记，并在事务成功提交后原子递增全局权限版本；仅名称、描述变化不刷新权限缓存，完全无变化时重试遗留的权限失效标记。
-- 同步元数据只能修改名称、描述和更新时间，不得覆盖人工维护的状态；移除路径使用带预期状态的条件更新，避免覆盖并发人工操作。同步不得使用数据库行锁。
+数据 SQL 按路径幂等补充接口，按资源编码幂等补充资源，并按资源编码和接口路径补充关联；不得覆盖管理端已经维护的接口状态和资源展示字段。已经执行过的 SQL 不得修改，接口路径变化必须通过新 SQL 明确处理旧路径和新路径。
 
 ## 9. 登录与安全
 
@@ -594,10 +577,9 @@ springdoc:
     path: /swagger-ui.html
 
 app:
-  session-idle-timeout: 1d
-  initial-admin-username: ${INITIAL_ADMIN_USERNAME:admin}
-  initial-admin-password: ${INITIAL_ADMIN_PASSWORD}
-  frontend-origin: ${FRONTEND_ORIGIN:http://localhost:3000}
+  security:
+    frontend-origin: ${FRONTEND_ORIGIN:http://localhost:3000}
+    cookie-secure: ${COOKIE_SECURE:false}
 ```
 
 Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenAPI JSON 地址为 `http://localhost:8080/v3/api-docs`。这两个地址仅用于本地开发，由 `TokenAuthenticationFilter` 显式放行，不进入业务接口目录；生产环境是否开放不在当前方案范围内。
@@ -610,15 +592,12 @@ Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenA
 4. 启动 Redis，并确认连接配置可用。
 5. 在 `backend` 执行 `./mvnw clean test`。
 6. 启动 `admin-boot`；应用不得自动建表、改表或执行 SQL 文件。
-7. 手动触发接口目录同步和基础数据初始化命令。
-8. Spring Boot 监听 `localhost:8080`。
-9. 安装前端依赖并启动 Next.js，监听 `localhost:3000`。
+7. Spring Boot 监听 `localhost:8080`，启动过程不扫描接口或初始化基础数据。
+8. 安装前端依赖并启动 Next.js，监听 `localhost:3000`。
 
-数据库变更 SQL 统一保存在 `backend/sql/`，按 `yyyyMMddNN-业务-说明.sql` 命名，例如 `2026072201-system-init.sql`。SQL 由人工确认目标环境、备份要求和执行顺序后操作，应用启动过程不得扫描或执行该目录。已经执行过的 SQL 不得修改；后续变更新增脚本。初始密码不得写入 SQL 文件。接口同步和业务初始化必须可以重复执行。
+数据库变更 SQL 统一保存在 `backend/sql/`，按 `yyyyMMddNN-业务-说明.sql` 命名，例如结构脚本 `2026072201-system-init.sql` 和数据脚本 `2026073001-system-data-init.sql`。SQL 由人工确认目标环境、备份要求和执行顺序后操作，应用启动过程不得扫描 Controller、创建基础数据或执行该目录。已经执行过的 SQL 不得修改；后续变更新增脚本。
 
-接口同步与数据初始化是两个事务阶段：同步阶段可独立提交；初始化阶段使用单事务，失败时只回滚该阶段且不得留下半成品。初始化不创建虚拟系统角色，超级管理员统一通过 `is_superuser` 绕过资源关联。首次初始化的管理员用户名是主要并发竞争点；工程实现同时将根部门名称、资源编码或路径、资源接口关联及管理员用户名这些初始化明确涉及的唯一索引冲突统一识别为初始化竞争，使当前事务完整回滚后最多重试一次。无法匹配上述明确索引的重复键异常保持原样抛出，避免把未知数据问题误判为可重试竞争。
-
-根部门按固定名称“总部”查找，系统管理根目录按固定名称和根节点查找；其余菜单与操作均按稳定资源编码查找。已有资源允许保留名称、路径、图标、排序、可见性和状态定制，但类型和父资源必须与初始化结构一致，否则整体回滚且不得追加接口关联。重复初始化只补缺失资源和关联，不覆盖展示字段，不删除额外关联；任何必需接口路径缺失时，初始化事务整体回滚。
+基础数据 SQL 负责根部门、默认超级管理员、接口目录、系统资源和资源接口关联。管理员仅保存 BCrypt 哈希，不在 SQL 中保存明文密码。数据 SQL 按部门名称、员工用户名、接口路径、资源编码和关联唯一键重复执行不新增重复数据，不创建虚拟系统角色；超级管理员统一通过 `is_superuser` 获取全部启用接口权限。
 
 `FRONTEND_ORIGIN` 只接受一个带主机的 HTTP 或 HTTPS origin，可包含端口；拒绝通配符、多 origin、userinfo、路径、查询参数和片段。单个尾斜杠在加载配置时移除，CORS 仅回显该规范化 origin。
 
@@ -672,7 +651,7 @@ Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenA
 
 本地验收标准：
 
-1. 人工执行数据库 SQL 后，接口同步和初始化可以重复执行。
+1. 人工按顺序执行结构 SQL 和数据 SQL，重复执行数据 SQL 不产生重复数据。
 2. 初始管理员可以登录。
 3. 可以维护员工、部门、角色、资源和接口关联。
 4. 普通员工只能看到授权菜单和按钮。

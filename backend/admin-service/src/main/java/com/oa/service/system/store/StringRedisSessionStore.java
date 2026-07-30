@@ -1,14 +1,11 @@
 package com.oa.service.system.store;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.system.cache.LoginSessionCache;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -41,13 +38,11 @@ public class StringRedisSessionStore {
               + "redis.call('DEL', KEYS[1]); return #members");
 
   private final StringRedisTemplate redisTemplate;
-  private final ObjectMapper objectMapper;
+  private final RedisCacheJsonCodec jsonCodec;
 
-  public StringRedisSessionStore(
-      StringRedisTemplate redisTemplate,
-      @Qualifier("loginSessionObjectMapper") ObjectMapper objectMapper) {
+  public StringRedisSessionStore(StringRedisTemplate redisTemplate, RedisCacheJsonCodec jsonCodec) {
     this.redisTemplate = redisTemplate;
-    this.objectMapper = objectMapper;
+    this.jsonCodec = jsonCodec;
   }
 
   public void createSessionAtomically(
@@ -105,8 +100,8 @@ public class StringRedisSessionStore {
       return null;
     }
     try {
-      return objectMapper.readValue(value, LoginSessionCache.class);
-    } catch (JsonProcessingException exception) {
+      return jsonCodec.read(value, LoginSessionCache.class);
+    } catch (RedisCacheJsonException exception) {
       throw new IllegalStateException("Redis登录会话数据格式无效", exception);
     }
   }
@@ -126,8 +121,8 @@ public class StringRedisSessionStore {
 
   private String writeSession(LoginSessionCache session) {
     try {
-      return objectMapper.writeValueAsString(session);
-    } catch (JsonProcessingException exception) {
+      return jsonCodec.write(session);
+    } catch (RedisCacheJsonException exception) {
       throw new IllegalStateException("Redis登录会话序列化失败", exception);
     }
   }
