@@ -5,10 +5,13 @@ describe("apiRequest", () => {
 
   it("默认携带 Cookie 并解析成功响应", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ code: 0, message: "成功", details: { id: 1 } }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({ success: true, code: 0, message: "成功", details: { id: 1 } }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -30,10 +33,13 @@ describe("apiRequest", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ code: 4220, message: "参数错误", details: null }), {
-          status: 422,
-          headers: { "Content-Type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({ success: false, code: 4220, message: "参数错误", details: null }),
+          {
+            status: 422,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
       ),
     );
 
@@ -44,19 +50,22 @@ describe("apiRequest", () => {
     });
   });
 
-  it("HTTP 成功但业务 code 非 0 时抛出业务错误", async () => {
+  it("HTTP 成功但 success 为 false 时抛出业务错误", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ code: 1001, message: "登录失败", details: null }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({ success: false, code: 0, message: "登录失败", details: null }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
       ),
     );
 
     await expect(apiRequest("/api/auth/login")).rejects.toMatchObject({
-      code: 1001,
+      code: 0,
       message: "登录失败",
     });
   });

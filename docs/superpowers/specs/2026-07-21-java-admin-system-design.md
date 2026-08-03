@@ -541,19 +541,49 @@ public EmployeeVO create(@Valid @RequestBody EmployeeCreateDTO request) {
 - 左侧导航根据当前员工有效目录和菜单动态生成。
 - 操作按钮根据当前员工有效 `ACTION` 资源编码展示。
 
-## 11. 错误响应
+## 11. JSON 响应与错误处理
 
-统一响应格式：
+所有对外 JSON 接口响应的最外层统一使用 `ApiResult<T>`，并固定包含 `success`、`code`、`message`。普通数据通过 `details` 承载；分页响应使用 `ApiResult<PageResult<T>>`，`PageResult<T>` 只承载 `records`、`total`、`page`、`size`。由于后续不定义其他响应包装对象，项目不为响应对象抽取公共基类。文件下载和流式响应不受此 JSON 结构约束。
+
+普通成功响应格式：
 
 ```json
 {
+  "success": true,
+  "code": 0,
+  "message": "成功",
+  "details": {}
+}
+```
+
+分页成功响应格式：
+
+```json
+{
+  "success": true,
+  "code": 0,
+  "message": "成功",
+  "details": {
+    "records": [],
+    "total": 0,
+    "page": 1,
+    "size": 20
+  }
+}
+```
+
+错误响应格式：
+
+```json
+{
+  "success": false,
   "code": 1003,
   "message": "无权访问该接口",
   "details": null
 }
 ```
 
-统一响应和业务异常使用 `ExceptionCode` 枚举；`code` 是全局唯一数字，`name` 是中文默认消息。需要携带路径等上下文时允许覆盖响应消息，但不得散落字符串错误码。`@RestControllerAdvice` 统一转换参数校验、业务异常和系统异常。HTTP 状态码约定：
+统一响应和业务异常使用 `ExceptionCode` 枚举；`code` 是全局唯一数字，`name` 是中文默认消息。`success` 必须由响应码统一确定：仅 `ExceptionCode.SUCCESS` 对应 `true`，其他响应码一律对应 `false`，业务代码不得分别设置这两个字段。客户端默认通过 `success` 区分成功与失败，只在需要识别特定错误时判断 `code`。需要携带路径等上下文时允许覆盖响应消息，但不得散落字符串错误码。`@RestControllerAdvice` 统一转换参数校验、业务异常和系统异常。HTTP 状态码约定：
 
 - `400`：违反业务规则
 - `401`：未登录或登录态失效

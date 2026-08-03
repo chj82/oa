@@ -48,7 +48,7 @@ export async function apiRequest<T = void>(
   if (response.status === 401) {
     redirectToLogin();
   }
-  if (!response.ok || !result || result.code !== 0) {
+  if (!response.ok || !result || !result.success) {
     throw new ApiClientError(
       result?.message || `请求失败（${response.status}）`,
       result?.code ?? response.status,

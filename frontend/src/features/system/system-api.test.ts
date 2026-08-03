@@ -13,10 +13,13 @@ describe("系统管理接口", () => {
 
   it("按后端契约发送员工新增请求", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ code: 0, message: "成功", details: { id: 8 } }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({ success: true, code: 0, message: "成功", details: { id: 8 } }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -40,10 +43,13 @@ describe("系统管理接口", () => {
   it("使用准确查询参数读取树、授权和接口分页", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ code: 0, message: "成功", details: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({ success: true, code: 0, message: "成功", details: [] }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -71,6 +77,7 @@ describe("系统管理接口", () => {
       return Promise.resolve(
         new Response(
           JSON.stringify({
+            success: true,
             code: 0,
             message: "成功",
             details: {

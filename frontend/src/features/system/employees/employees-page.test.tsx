@@ -23,10 +23,15 @@ describe("员工管理页", () => {
         if (url.includes("/employees/page")) {
           return new Promise<Response>((resolve) => { resolveRequest = resolve; });
         }
-        return Promise.resolve(new Response(JSON.stringify({ code: 0, message: "成功", details: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }));
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ success: true, code: 0, message: "成功", details: [] }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+        );
       }),
     );
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -41,6 +46,7 @@ describe("员工管理页", () => {
     resolveRequest?.(
       new Response(
         JSON.stringify({
+          success: true,
           code: 0,
           message: "成功",
           details: { records: [], total: 0, page: 1, size: 20 },
@@ -62,7 +68,7 @@ describe("员工管理页", () => {
       if (url.includes("/employees/page")) details = { records: [{ id: 2, username: "zhangsan", name: "张三", phone: null, email: null, departmentId: 1, status: "ENABLED", superuser: false, createdAt: "", updatedAt: "" }], total: 1, page: 1, size: 20 };
       if (url.includes("/roles/page")) details = { records: [{ id: 10, code: "staff", name: "员工", description: null, status: "ENABLED", createdAt: "", updatedAt: "" }], total: 1, page: 1, size: 200 };
       if (url.includes("/role-ids")) details = [10];
-      return Promise.resolve(new Response(JSON.stringify({ code: 0, message: "成功", details }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      return Promise.resolve(new Response(JSON.stringify({ success: true, code: 0, message: "成功", details }), { status: 200, headers: { "Content-Type": "application/json" } }));
     }));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const user = userEvent.setup();

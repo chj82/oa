@@ -1,4 +1,5 @@
 export interface ApiResult<T> {
+  success: boolean;
   code: number;
   message: string;
   details: T;

@@ -51,6 +51,7 @@
 - 自定义类型应避免与 Spring、Swagger 等常用框架类型重名，优先选择语义清晰且不冲突的名称；除确有歧义且无法合理改名外，不在代码中反复使用全限定类名。
 - 业务枚举必须定义 `code`、`name`：数据库持久化使用 `code`，中文展示使用 `name`。
 - 统一响应和业务异常必须使用 `ExceptionCode` 枚举；`code` 使用全局唯一数字，`name` 使用中文说明，禁止在业务代码、过滤器或拦截器中散落字符串错误码。
+- 所有对外 JSON 接口响应的最外层必须使用 `ApiResult<T>`，并包含 `success`、`code`、`message`；仅 `ExceptionCode.SUCCESS` 对应 `success = true`，其他响应码一律对应 `success = false`，业务代码不得分别设置造成状态不一致。分页响应使用 `ApiResult<PageResult<T>>`，`PageResult<T>` 只承载分页数据。项目不再为响应对象抽取公共基类。文件下载和流式响应不受此约束。
 - Entity 只映射数据库原始字段类型，不直接使用业务枚举；`TINYINT NOT NULL` 状态使用 `int`，字符串枚举值使用 `String`，枚举转换放在 Service 边界。
 - Entity 中数据库 `NOT NULL` 的数值字段使用 Java 基本类型 `long`、`int`，只有允许 `NULL` 的数值字段使用 `Long`、`Integer`。
 

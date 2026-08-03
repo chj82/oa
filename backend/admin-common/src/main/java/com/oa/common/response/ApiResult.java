@@ -4,6 +4,9 @@ import com.oa.common.model.common.enums.ExceptionCode;
 
 /** 统一接口响应。 */
 public class ApiResult<T> {
+  /** 是否成功。 */
+  private boolean success;
+
   /** 响应码。 */
   private int code;
 
@@ -17,6 +20,7 @@ public class ApiResult<T> {
 
   /** 创建指定内容的响应。 */
   public ApiResult(int code, String message, T details) {
+    this.success = code == ExceptionCode.SUCCESS.getCode();
     this.code = code;
     this.message = message;
     this.details = details;
@@ -40,6 +44,14 @@ public class ApiResult<T> {
 
   public int getCode() {
     return code;
+  }
+
+  public boolean getSuccess() {
+    return success;
+  }
+
+  public void setSuccess(boolean success) {
+    this.success = success;
   }
 
   public void setCode(int code) {

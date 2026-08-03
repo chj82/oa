@@ -1,6 +1,7 @@
 package com.oa.common.model.common.enums;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.oa.common.exception.BusinessException;
@@ -49,8 +50,10 @@ class ExceptionCodeTest {
     ApiResult<String> success = ApiResult.success("ok");
     ApiResult<Void> forbidden = ApiResult.error(ExceptionCode.FORBIDDEN);
 
+    assertTrue(success.getSuccess());
     assertEquals(0, success.getCode());
     assertEquals(ExceptionCode.SUCCESS.getName(), success.getMessage());
+    assertFalse(forbidden.getSuccess());
     assertEquals(ExceptionCode.FORBIDDEN.getCode(), forbidden.getCode());
     assertEquals(ExceptionCode.FORBIDDEN.getName(), forbidden.getMessage());
   }
