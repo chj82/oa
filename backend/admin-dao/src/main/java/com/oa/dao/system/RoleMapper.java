@@ -14,6 +14,17 @@ import org.apache.ibatis.annotations.Param;
 /** 角色数据访问接口。 */
 @Mapper
 public interface RoleMapper extends BaseMapper<RoleEntity> {
+  /** 按ID集合批量查询实际存在的角色。 */
+  default List<RoleEntity> selectExistingByIds(Collection<Long> roleIds) {
+    if (roleIds.isEmpty()) {
+      return List.of();
+    }
+    return selectList(
+        Wrappers.<RoleEntity>lambdaQuery()
+            .in(RoleEntity::getId, roleIds)
+            .orderByAsc(RoleEntity::getId));
+  }
+
   /** 按ID锁定角色，供无外键关联写事务使用。 */
   RoleEntity selectByIdForUpdate(@Param("id") long id);
 

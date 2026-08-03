@@ -54,6 +54,7 @@ public enum ExceptionCode {
   RESOURCE_UNAVAILABLE(3414, "系统资源不存在或未启用"),
   RESOURCE_DIRECTORY_HAS_APIS(3415, "已关联接口的资源不能改为目录"),
   RESOURCE_CONCURRENT_MODIFICATION(3416, "资源已被并发修改，请刷新后重试"),
+  TASK_NOT_FOUND(3501, "任务不存在"),
   INFRASTRUCTURE_UNAVAILABLE(9001, "基础设施暂不可用"),
   AUTH_INFRASTRUCTURE_UNAVAILABLE(9002, "认证服务暂不可用"),
   INTERNAL_ERROR(9999, "系统异常");

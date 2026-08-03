@@ -11,6 +11,18 @@ import org.apache.ibatis.annotations.Param;
 /** 角色资源关联数据访问接口。 */
 @Mapper
 public interface RoleResourceMapper extends BaseMapper<RoleResourceEntity> {
+  /** 按角色ID集合批量查询角色资源关联。 */
+  default List<RoleResourceEntity> selectRelationsByRoleIds(Collection<Long> roleIds) {
+    if (roleIds.isEmpty()) {
+      return List.of();
+    }
+    return selectList(
+        Wrappers.<RoleResourceEntity>lambdaQuery()
+            .in(RoleResourceEntity::getRoleId, roleIds)
+            .orderByAsc(RoleResourceEntity::getRoleId)
+            .orderByAsc(RoleResourceEntity::getResourceId));
+  }
+
   /** 查询指定资源的角色关联数量。 */
   default long countByResourceId(long resourceId) {
     return selectCount(

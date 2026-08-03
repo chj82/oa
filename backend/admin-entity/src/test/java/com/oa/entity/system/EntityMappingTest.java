@@ -167,7 +167,21 @@ class EntityMappingTest {
                     "apiId",
                     "api_id",
                     "createdAt",
-                    "created_at")));
+                    "created_at")),
+            SystemVersionEntity.class,
+            new TableMapping(
+                "t_system_version",
+                columns(
+                    "id",
+                    "id",
+                    "versionCode",
+                    "version_code",
+                    "versionValue",
+                    "version_value",
+                    "createdAt",
+                    "created_at",
+                    "updatedAt",
+                    "updated_at")));
     for (var mapping : mappings.entrySet()) {
       assertEquals(
           mapping.getValue().table(), mapping.getKey().getAnnotation(TableName.class).value());
@@ -216,6 +230,8 @@ class EntityMappingTest {
     assertFieldTypes(
         ResourceApiEntity.class,
         Map.of("id", long.class, "resourceId", long.class, "apiId", long.class));
+    assertFieldTypes(
+        SystemVersionEntity.class, Map.of("id", long.class, "versionValue", long.class));
     assertFieldType(SystemResourceEntity.class, "type", String.class);
   }
 
@@ -230,14 +246,16 @@ class EntityMappingTest {
             SystemApiEntity.class,
             EmployeeRoleEntity.class,
             RoleResourceEntity.class,
-            ResourceApiEntity.class)
+            ResourceApiEntity.class,
+            SystemVersionEntity.class)
         .forEach(type -> assertTimeFieldWithoutFill(type, "createdAt"));
     List.of(
             DepartmentEntity.class,
             EmployeeEntity.class,
             RoleEntity.class,
             SystemResourceEntity.class,
-            SystemApiEntity.class)
+            SystemApiEntity.class,
+            SystemVersionEntity.class)
         .forEach(type -> assertTimeFieldWithoutFill(type, "updatedAt"));
   }
 

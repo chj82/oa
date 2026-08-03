@@ -11,6 +11,14 @@ import org.apache.ibatis.annotations.Param;
 /** 资源接口关联数据访问接口。 */
 @Mapper
 public interface ResourceApiMapper extends BaseMapper<ResourceApiEntity> {
+  /** 按资源ID和接口ID查询全部资源接口关联。 */
+  default List<ResourceApiEntity> selectAllRelations() {
+    return selectList(
+        Wrappers.<ResourceApiEntity>lambdaQuery()
+            .orderByAsc(ResourceApiEntity::getResourceId)
+            .orderByAsc(ResourceApiEntity::getApiId));
+  }
+
   /** 查询指定资源关联的接口ID。 */
   default List<Long> selectApiIdsByResourceId(long resourceId) {
     return selectList(

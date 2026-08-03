@@ -66,16 +66,47 @@ class SqlInitializationTest {
     }
   }
 
+  /** 权限缓存重构SQL必须创建并初始化系统版本。 */
+  @Test
+  void 权限缓存重构SQL包含快照版本表和初始数据() throws IOException {
+    String sql = Files.readString(findSql("2026073101-permission-cache-redesign.sql"));
+
+    assertTrue(sql.contains("CREATE TABLE t_system_version"));
+    assertTrue(sql.contains("version_code VARCHAR(64) NOT NULL"));
+    assertTrue(sql.contains("version_value BIGINT UNSIGNED NOT NULL"));
+    assertTrue(sql.contains("UNIQUE KEY udx_system_version_code (version_code)"));
+    assertTrue(sql.contains("created_at DATETIME(3) NOT NULL"));
+    assertTrue(sql.contains("updated_at DATETIME(3) NOT NULL"));
+    assertTrue(sql.contains("VALUES ('permission_snapshot', 0, NOW(3), NOW(3))"));
+  }
+
+  /** 任务管理SQL必须注册列表和手动运行接口并推进权限快照版本。 */
+  @Test
+  void 任务管理SQL包含接口资源和版本推进() throws IOException {
+    String sql = Files.readString(findSql("2026073102-task-management.sql"));
+
+    assertTrue(sql.contains("'/api/admin/task/list.htm'"));
+    assertTrue(sql.contains("'/api/admin/task/run.htm'"));
+    assertTrue(sql.contains("'system:task'"));
+    assertTrue(sql.contains("INSERT INTO t_resource_api"));
+    assertTrue(sql.contains("version_value = version_value + 1"));
+    assertTrue(sql.contains("version_code = 'permission_snapshot'"));
+  }
+
   private Path findSql() {
+    return findSql("2026073001-system-data-init.sql");
+  }
+
+  private Path findSql(String filename) {
     for (Path candidate :
         List.of(
-            Path.of("sql/2026073001-system-data-init.sql"),
-            Path.of("../sql/2026073001-system-data-init.sql"),
-            Path.of("backend/sql/2026073001-system-data-init.sql"))) {
+            Path.of("sql", filename),
+            Path.of("../sql", filename),
+            Path.of("backend/sql", filename))) {
       if (Files.exists(candidate)) {
         return candidate;
       }
     }
-    throw new IllegalStateException("未找到系统数据初始化 SQL");
+    throw new IllegalStateException("未找到SQL文件：" + filename);
   }
 }

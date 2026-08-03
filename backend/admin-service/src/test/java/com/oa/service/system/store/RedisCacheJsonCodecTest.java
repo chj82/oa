@@ -1,41 +1,29 @@
 package com.oa.service.system.store;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.oa.common.model.system.cache.EmployeePermissionCache;
-import com.oa.common.model.system.enums.ResourceType;
-import com.oa.common.model.system.enums.SystemStatus;
-import com.oa.common.model.system.vo.ResourceVO;
-import java.time.LocalDateTime;
+import com.oa.common.model.system.cache.EmployeeAuthorizationCache;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /** Redis 缓存 JSON 编解码测试。 */
 class RedisCacheJsonCodecTest {
 
-  /** 权限缓存中的多层资源、枚举和日期时间必须能够完整往返。 */
+  /** 员工授权关系缓存必须能够完整往返。 */
   @Test
-  void 权限缓存复杂字段完整往返() {
+  void 员工授权关系缓存完整往返() {
     RedisCacheJsonCodec codec = new RedisCacheJsonCodec(new ObjectMapper());
-    EmployeePermissionCache source = permissionCache();
+    EmployeeAuthorizationCache source = employeeAuthorizationCache();
 
     String json = codec.write(source);
-    EmployeePermissionCache result = codec.read(json, EmployeePermissionCache.class);
+    EmployeeAuthorizationCache result = codec.read(json, EmployeeAuthorizationCache.class);
 
-    assertFalse(json.contains("[2026,7,30"));
-    assertEquals(8L, result.getVersion());
-    assertEquals(Set.of("/api/system/resource/tree"), result.getApiPaths());
-    ResourceVO directory = result.getResources().get(0);
-    assertEquals(ResourceType.DIRECTORY, directory.getType());
-    assertEquals(SystemStatus.ENABLED, directory.getStatus());
-    assertEquals(LocalDateTime.of(2026, 7, 30, 9, 10, 11, 123_000_000), directory.getCreatedAt());
-    ResourceVO menu = directory.getChildren().get(0);
-    assertEquals(ResourceType.MENU, menu.getType());
-    assertEquals(LocalDateTime.of(2026, 7, 30, 10, 20, 30, 456_000_000), menu.getUpdatedAt());
+    assertEquals(7L, result.getEmployeeId());
+    assertEquals(1, result.getStatus());
+    assertEquals(true, result.getSuperuser());
+    assertEquals(List.of(10L, 20L), result.getRoleIds());
   }
 
   /** 非法 JSON 必须统一包装为 Codec 异常。 */
@@ -44,36 +32,16 @@ class RedisCacheJsonCodecTest {
     RedisCacheJsonCodec codec = new RedisCacheJsonCodec(new ObjectMapper());
 
     assertThrows(
-        RedisCacheJsonException.class, () -> codec.read("not-json", EmployeePermissionCache.class));
+        RedisCacheJsonException.class,
+        () -> codec.read("not-json", EmployeeAuthorizationCache.class));
   }
 
-  private EmployeePermissionCache permissionCache() {
-    ResourceVO menu = resource(2L, 1L, ResourceType.MENU, "员工管理");
-    menu.setUpdatedAt(LocalDateTime.of(2026, 7, 30, 10, 20, 30, 456_000_000));
-    ResourceVO directory = resource(1L, 0L, ResourceType.DIRECTORY, "系统管理");
-    directory.setCreatedAt(LocalDateTime.of(2026, 7, 30, 9, 10, 11, 123_000_000));
-    directory.setChildren(List.of(menu));
-
-    EmployeePermissionCache cache = new EmployeePermissionCache();
-    cache.setVersion(8L);
-    cache.setApiPaths(Set.of("/api/system/resource/tree"));
-    cache.setResources(List.of(directory));
+  private EmployeeAuthorizationCache employeeAuthorizationCache() {
+    EmployeeAuthorizationCache cache = new EmployeeAuthorizationCache();
+    cache.setEmployeeId(7L);
+    cache.setStatus(1);
+    cache.setSuperuser(true);
+    cache.setRoleIds(List.of(10L, 20L));
     return cache;
-  }
-
-  private ResourceVO resource(long id, long parentId, ResourceType type, String name) {
-    ResourceVO resource = new ResourceVO();
-    resource.setId(id);
-    resource.setParentId(parentId);
-    resource.setType(type);
-    resource.setName(name);
-    resource.setCode("RESOURCE_" + id);
-    resource.setPath("/resource/" + id);
-    resource.setIcon("menu");
-    resource.setSortOrder((int) id);
-    resource.setVisible(true);
-    resource.setStatus(SystemStatus.ENABLED);
-    resource.setChildren(List.of());
-    return resource;
   }
 }

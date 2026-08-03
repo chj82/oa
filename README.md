@@ -17,9 +17,11 @@ OA 管理系统采用前后端分离结构。后端使用 Java 17、Spring Boot�
 ```bash
 mysql -u root -p oa < backend/sql/2026072201-system-init.sql
 mysql -u root -p oa < backend/sql/2026073001-system-data-init.sql
+mysql -u root -p oa < backend/sql/2026073101-permission-cache-redesign.sql
+mysql -u root -p oa < backend/sql/2026073102-task-management.sql
 ```
 
-第一份 SQL 创建数据库结构，第二份 SQL 初始化根部门、默认管理员、系统接口、系统资源及关联。默认管理员为 `admin / 12345678`，首次登录后应立即修改密码。后续 SQL 变更继续存放在 `backend/sql/`，项目不使用 Flyway、Liquibase 或 Spring SQL 自动初始化。
+前两份 SQL 创建基础结构并初始化根部门、默认管理员、系统接口、系统资源及关联；后两份 SQL 增加权限快照版本和任务管理接口。默认管理员为 `admin / 12345678`，首次登录后应立即修改密码。后续 SQL 变更继续存放在 `backend/sql/`，项目不使用 Flyway、Liquibase 或 Spring SQL 自动初始化。
 
 ## 启动后端
 

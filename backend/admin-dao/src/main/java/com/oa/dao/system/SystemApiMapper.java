@@ -15,6 +15,14 @@ import org.apache.ibatis.annotations.Mapper;
 /** 系统接口目录数据访问接口。 */
 @Mapper
 public interface SystemApiMapper extends BaseMapper<SystemApiEntity> {
+  /** 查询全部启用接口。 */
+  default List<SystemApiEntity> selectAllEnabled() {
+    return selectList(
+        Wrappers.<SystemApiEntity>lambdaQuery()
+            .eq(SystemApiEntity::getStatus, SystemStatus.ENABLED.getCode())
+            .orderByAsc(SystemApiEntity::getId));
+  }
+
   /** 按筛选条件分页查询系统接口。 */
   default IPage<SystemApiEntity> selectSystemApiPage(SystemApiQueryDTO query) {
     String keyword =

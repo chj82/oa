@@ -62,6 +62,20 @@ class AuthenticationStructureTest {
     }
   }
 
+  @Test
+  void 旧员工权限缓存实现已删除() throws IOException {
+    String source = readJavaSources(serviceSourceRoot()) + readJavaSources(commonSourceRoot());
+
+    for (String forbidden :
+        List.of(
+            "StringRedisPermissionStore",
+            "EmployeePermissionCache",
+            "admin:permission:invalidating",
+            "admin:permission:rebuild-lock")) {
+      assertFalse(source.contains(forbidden), "旧权限缓存内容仍存在：" + forbidden);
+    }
+  }
+
   private String readJavaSources(Path root) throws IOException {
     StringBuilder source = new StringBuilder();
     try (var files = Files.walk(root)) {
