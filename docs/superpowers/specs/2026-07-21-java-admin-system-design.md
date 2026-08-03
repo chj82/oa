@@ -270,7 +270,9 @@ frontend/
 
 - `DIRECTORY` 不配置操作权限码。
 - `MENU` 可以挂子菜单或操作按钮。
+- `MENU` 必须关联页面首次打开和正常展示所需的分页、列表或树等基础读取接口，获得菜单后页面必须能够加载基础数据。
 - `ACTION` 不能有子节点，不配置路由和图标。
+- `ACTION` 必须关联完成该操作所需的全部查询和写入接口；分页、树、关联 ID 等页面内部调用不得机械拆成独立操作权限。
 - `MENU` 和 `ACTION` 的资源编码全局唯一。
 - 删除资源前必须确认没有子节点，并检查角色和接口关联。
 - 禁用父资源会使子树失效，但保留已有授权关系。
@@ -644,7 +646,9 @@ Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenA
 7. Spring Boot 监听 `localhost:8080`，启动过程不扫描接口或初始化基础数据。
 8. 安装前端依赖并启动 Next.js，监听 `localhost:3000`。
 
-数据库变更 SQL 统一保存在 `backend/sql/`，按 `yyyyMMddNN-业务-说明.sql` 命名，例如结构脚本 `2026072201-system-init.sql` 和数据脚本 `2026073001-system-data-init.sql`。SQL 由人工确认目标环境、备份要求和执行顺序后操作，应用启动过程不得扫描 Controller、创建基础数据或执行该目录。已经执行过的 SQL 不得修改；后续变更新增脚本。
+数据库变更 SQL 统一保存在 `backend/sql/`，按 `yyyyMMddNN-业务-说明.sql` 命名，例如结构脚本 `2026072201-system-init.sql`。SQL 由人工确认目标环境、备份要求和执行顺序后操作，应用启动过程不得扫描 Controller、创建基础数据或执行该目录。已经执行过的 SQL 不得修改；后续变更新增脚本。
+
+空库重建使用 `2026072201-system-init.sql`、`2026073101-permission-cache-redesign.sql`、`2026080301-system-data-reinit.sql`，并严格按该顺序人工执行。使用新的完整数据初始化基线时，不再执行历史数据脚本 `2026073001-system-data-init.sql` 和 `2026073102-task-management.sql`，避免重复或错误的权限资源配置。
 
 基础数据 SQL 负责根部门、默认超级管理员、接口目录、系统资源和资源接口关联。管理员仅保存 BCrypt 哈希，不在 SQL 中保存明文密码。数据 SQL 按部门名称、员工用户名、接口路径、资源编码和关联唯一键重复执行不新增重复数据，不创建虚拟系统角色；超级管理员统一通过 `is_superuser` 获取全部启用接口权限。
 
