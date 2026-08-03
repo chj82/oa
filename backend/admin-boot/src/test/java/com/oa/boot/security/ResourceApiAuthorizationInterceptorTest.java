@@ -7,6 +7,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.common.enums.ExceptionCode;
@@ -29,7 +31,7 @@ class ResourceApiAuthorizationInterceptorTest {
   @BeforeEach
   void setUp() {
     MockitoAnnotations.openMocks(this);
-    interceptor = new ResourceApiAuthorizationInterceptor(permissionService);
+    interceptor = new ResourceApiAuthorizationInterceptor(permissionService, new ObjectMapper());
   }
 
   @AfterEach
@@ -133,13 +135,11 @@ class ResourceApiAuthorizationInterceptorTest {
 
   private void assertCode(MockHttpServletResponse response, ExceptionCode exceptionCode)
       throws Exception {
-    assertEquals(
-        "{\"code\":"
-            + exceptionCode.getCode()
-            + ",\"message\":\""
-            + exceptionCode.getName()
-            + "\",\"details\":null}",
-        response.getContentAsString());
+    JsonNode body = new ObjectMapper().readTree(response.getContentAsString());
+    assertFalse(body.get("success").asBoolean());
+    assertEquals(exceptionCode.getCode(), body.get("code").asInt());
+    assertEquals(exceptionCode.getName(), body.get("message").asText());
+    assertTrue(body.get("details").isNull());
   }
 
   private MockHttpServletRequest request(

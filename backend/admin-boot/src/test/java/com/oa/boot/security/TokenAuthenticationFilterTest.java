@@ -7,6 +7,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.common.enums.ExceptionCode;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -35,7 +38,8 @@ class TokenAuthenticationFilterTest {
   void setUp() {
     MockitoAnnotations.openMocks(this);
     filter =
-        new TokenAuthenticationFilter(sessionService, permissionService, "http://localhost:3000/");
+        new TokenAuthenticationFilter(
+            sessionService, permissionService, new ObjectMapper(), "http://localhost:3000/");
   }
 
   @AfterEach
@@ -88,13 +92,18 @@ class TokenAuthenticationFilterTest {
 
   @Test
   void Cors预检请求放行且不读取会话() throws Exception {
-    MockHttpServletRequest request = request("OPTIONS", "/api/auth/current");
-    request.addHeader("Origin", "http://localhost:3000");
-    request.addHeader("Access-Control-Request-Method", "GET");
+    MockHttpServletRequest request = request("OPTIONS", "/api/auth/login");
+    request.addHeader(HttpHeaders.ORIGIN, "http://localhost:3000");
+    request.addHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST");
+    request.addHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "content-type");
     MockHttpServletResponse response = new MockHttpServletResponse();
 
     filter.doFilter(request, response, chain);
 
+    assertEquals(
+        "GET,HEAD,POST,PUT,DELETE,OPTIONS",
+        response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS));
+    assertEquals("Content-Type", response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS));
     verify(chain).doFilter(request, response);
     verify(sessionService, never()).getAndRefresh(org.mockito.ArgumentMatchers.any());
   }
@@ -102,6 +111,7 @@ class TokenAuthenticationFilterTest {
   @Test
   void 受保护请求无Cookie返回401且忽略Authorization() throws Exception {
     MockHttpServletRequest request = request("GET", "/api/auth/current");
+    request.addHeader(HttpHeaders.ORIGIN, "http://localhost:3000");
     request.addHeader("Authorization", "Bearer token");
     MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -109,10 +119,9 @@ class TokenAuthenticationFilterTest {
 
     assertEquals(401, response.getStatus());
     assertEquals(
-        "{\"code\":"
-            + ExceptionCode.UNAUTHORIZED.getCode()
-            + ",\"message\":\"未登录或登录态已失效\",\"details\":null}",
-        response.getContentAsString());
+        "http://localhost:3000", response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
+    assertEquals("true", response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS));
+    assertError(response, ExceptionCode.UNAUTHORIZED);
     verify(chain, never()).doFilter(request, response);
   }
 
@@ -180,11 +189,7 @@ class TokenAuthenticationFilterTest {
     filter.doFilter(request, response, chain);
 
     assertEquals(503, response.getStatus());
-    assertEquals(
-        "{\"code\":"
-            + ExceptionCode.AUTH_INFRASTRUCTURE_UNAVAILABLE.getCode()
-            + ",\"message\":\"认证服务暂不可用\",\"details\":null}",
-        response.getContentAsString());
+    assertError(response, ExceptionCode.AUTH_INFRASTRUCTURE_UNAVAILABLE);
     verify(chain, never()).doFilter(request, response);
   }
 
@@ -260,11 +265,22 @@ class TokenAuthenticationFilterTest {
         }) {
       assertThrows(
           IllegalArgumentException.class,
-          () -> new TokenAuthenticationFilter(sessionService, permissionService, origin));
+          () ->
+              new TokenAuthenticationFilter(
+                  sessionService, permissionService, new ObjectMapper(), origin));
     }
   }
 
   private MockHttpServletRequest request(String method, String path) {
     return new MockHttpServletRequest(method, path);
+  }
+
+  private void assertError(MockHttpServletResponse response, ExceptionCode exceptionCode)
+      throws Exception {
+    JsonNode body = new ObjectMapper().readTree(response.getContentAsString());
+    assertEquals(false, body.get("success").asBoolean());
+    assertEquals(exceptionCode.getCode(), body.get("code").asInt());
+    assertEquals(exceptionCode.getName(), body.get("message").asText());
+    assertEquals(true, body.get("details").isNull());
   }
 }

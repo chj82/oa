@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 public class ResourceApiEntity {
   /** 资源接口关联ID。 */
   @TableId(value = "id", type = IdType.AUTO)
-  private long id;
+  private Long id;
 
   /** 资源ID。 */
   @TableField("resource_id")
@@ -27,11 +27,11 @@ public class ResourceApiEntity {
 
   public ResourceApiEntity() {}
 
-  public long getId() {
+  public Long getId() {
     return id;
   }
 
-  public void setId(long id) {
+  public void setId(Long id) {
     this.id = id;
   }
 

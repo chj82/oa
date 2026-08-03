@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 public class SystemResourceEntity {
   /** 资源ID。 */
   @TableId(value = "id", type = IdType.AUTO)
-  private long id;
+  private Long id;
 
   /** 父资源ID，根资源为零。 */
   @TableField("parent_id")
@@ -59,11 +59,11 @@ public class SystemResourceEntity {
 
   public SystemResourceEntity() {}
 
-  public long getId() {
+  public Long getId() {
     return id;
   }
 
-  public void setId(long id) {
+  public void setId(Long id) {
     this.id = id;
   }
 

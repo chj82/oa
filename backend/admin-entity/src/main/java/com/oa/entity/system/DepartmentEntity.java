@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 public class DepartmentEntity {
   /** 部门ID。 */
   @TableId(value = "id", type = IdType.AUTO)
-  private long id;
+  private Long id;
 
   /** 父部门ID，根部门为零。 */
   @TableField("parent_id")
@@ -39,11 +39,11 @@ public class DepartmentEntity {
 
   public DepartmentEntity() {}
 
-  public long getId() {
+  public Long getId() {
     return id;
   }
 
-  public void setId(long id) {
+  public void setId(Long id) {
     this.id = id;
   }
 

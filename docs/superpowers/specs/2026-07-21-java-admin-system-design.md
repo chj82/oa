@@ -170,7 +170,7 @@ backend/
 - DTO、VO 和其他数据对象使用传统 Java Bean：普通 `class`、`private` 字段、公开无参构造和显式标准 Getter/Setter，不使用 `record` 或 Lombok；可根据实际用途增加带参构造器或链式 Setter，但不添加无必要写法。对象字段必须使用中文注释说明用途。
 - 业务枚举统一定义 `code`、`name` 字段：数据库持久化使用 `code`，中文展示使用 `name`。
 - Entity 只使用与数据库字段对应的原始 Java 类型，不直接引用业务枚举；状态等枚举转换由 Service 映射处理。
-- Entity 中数据库 `NOT NULL` 的数值字段使用 Java 基本类型，允许 `NULL` 的数值字段使用包装类型；DTO、VO 按接口可空语义定义。
+- Entity 的自增主键 `id` 使用 `Long`，其他数据库 `NOT NULL` 数值字段使用 Java 基本类型，允许 `NULL` 的数值字段使用包装类型；DTO、VO 按接口可空语义定义。
 - 登录和 Token 会话规则放在 `admin-service/system`，Token 认证过滤器与接口鉴权拦截器放在 `admin-boot/security`。
 - 统一异常类型放在 `admin-common`，异常到 HTTP 响应的转换放在 `admin-boot/advice`。
 

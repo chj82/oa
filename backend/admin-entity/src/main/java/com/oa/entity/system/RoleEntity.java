@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 public class RoleEntity {
   /** 角色ID。 */
   @TableId(value = "id", type = IdType.AUTO)
-  private long id;
+  private Long id;
 
   /** 角色编码。 */
   @TableField("code")
@@ -39,11 +39,11 @@ public class RoleEntity {
 
   public RoleEntity() {}
 
-  public long getId() {
+  public Long getId() {
     return id;
   }
 
-  public void setId(long id) {
+  public void setId(Long id) {
     this.id = id;
   }
 

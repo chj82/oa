@@ -197,41 +197,41 @@ class EntityMappingTest {
     }
   }
 
-  /** 数据库非空数值字段必须使用基本类型，明确允许为空的字段保留包装类型。 */
+  /** 自增主键使用 Long，其他数据库非空数值字段使用基本类型。 */
   @Test
   void shouldUseNullabilityAwareNumericTypes() {
     assertFieldTypes(
         DepartmentEntity.class,
         Map.of(
-            "id", long.class, "parentId", long.class, "sortOrder", int.class, "status", int.class));
+            "id", Long.class, "parentId", long.class, "sortOrder", int.class, "status", int.class));
     assertFieldTypes(
         EmployeeEntity.class,
         Map.of(
-            "id", long.class,
+            "id", Long.class,
             "departmentId", long.class,
             "status", int.class,
             "superuser", int.class));
-    assertFieldTypes(RoleEntity.class, Map.of("id", long.class, "status", int.class));
+    assertFieldTypes(RoleEntity.class, Map.of("id", Long.class, "status", int.class));
     assertFieldTypes(
         SystemResourceEntity.class,
         Map.of(
-            "id", long.class,
+            "id", Long.class,
             "parentId", long.class,
             "sortOrder", int.class,
             "visible", int.class,
             "status", int.class));
-    assertFieldTypes(SystemApiEntity.class, Map.of("id", long.class, "status", int.class));
+    assertFieldTypes(SystemApiEntity.class, Map.of("id", Long.class, "status", int.class));
     assertFieldTypes(
         EmployeeRoleEntity.class,
-        Map.of("id", long.class, "employeeId", long.class, "roleId", long.class));
+        Map.of("id", Long.class, "employeeId", long.class, "roleId", long.class));
     assertFieldTypes(
         RoleResourceEntity.class,
-        Map.of("id", long.class, "roleId", long.class, "resourceId", long.class));
+        Map.of("id", Long.class, "roleId", long.class, "resourceId", long.class));
     assertFieldTypes(
         ResourceApiEntity.class,
-        Map.of("id", long.class, "resourceId", long.class, "apiId", long.class));
+        Map.of("id", Long.class, "resourceId", long.class, "apiId", long.class));
     assertFieldTypes(
-        SystemVersionEntity.class, Map.of("id", long.class, "versionValue", long.class));
+        SystemVersionEntity.class, Map.of("id", Long.class, "versionValue", long.class));
     assertFieldType(SystemResourceEntity.class, "type", String.class);
   }
 

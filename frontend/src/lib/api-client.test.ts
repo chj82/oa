@@ -23,10 +23,16 @@ describe("apiRequest", () => {
   });
 
   it("浏览器收到 401 时跳转登录页", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("window", {
+      dispatchEvent: vi.fn(),
+      history: { replaceState: vi.fn() },
+      location: { pathname: "/dashboard", replace },
+    });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
 
     await expect(apiRequest("/api/auth/current")).rejects.toBeInstanceOf(ApiClientError);
-    expect(window.location.pathname).toBe("/login");
+    expect(replace).toHaveBeenCalledWith("/login");
   });
 
   it("非 2xx 响应抛出包含服务端信息的错误", async () => {

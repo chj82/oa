@@ -16,8 +16,7 @@ export class ApiClientError extends Error {
 
 function redirectToLogin(): void {
   if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-    window.history.replaceState(null, "", "/login");
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.location.replace("/login");
   }
 }
 

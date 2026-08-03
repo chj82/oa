@@ -133,7 +133,7 @@
 
 - [ ] **步骤 4：实现版本 Entity 和 Mapper**
 
-  Entity 使用传统 Java Bean，字段为 `long id`、`String versionCode`、`long versionValue`、`LocalDateTime createdAt`、`LocalDateTime updatedAt`。Mapper 公开：
+  Entity 使用传统 Java Bean，字段为 `Long id`、`String versionCode`、`long versionValue`、`LocalDateTime createdAt`、`LocalDateTime updatedAt`。Mapper 公开：
 
   ```java
   long selectVersion(@Param("versionCode") String versionCode);

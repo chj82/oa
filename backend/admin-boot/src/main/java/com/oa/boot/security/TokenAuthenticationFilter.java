@@ -1,11 +1,13 @@
 package com.oa.boot.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oa.common.constant.AuthenticationConstants;
 import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.cache.LoginSessionCache;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
+import com.oa.common.response.ApiResult;
 import com.oa.service.system.PermissionService;
 import com.oa.service.system.SessionService;
 import jakarta.servlet.FilterChain;
@@ -17,6 +19,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -25,14 +29,17 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class TokenAuthenticationFilter extends OncePerRequestFilter {
   private final SessionService sessionService;
   private final PermissionService permissionService;
+  private final ObjectMapper objectMapper;
   private final String frontendOrigin;
 
   public TokenAuthenticationFilter(
       SessionService sessionService,
       PermissionService permissionService,
+      ObjectMapper objectMapper,
       @Value("${app.security.frontend-origin:http://localhost:3000}") String frontendOrigin) {
     this.sessionService = sessionService;
     this.permissionService = permissionService;
+    this.objectMapper = objectMapper;
     this.frontendOrigin = FrontendOrigin.normalize(frontendOrigin);
   }
 
@@ -40,6 +47,7 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
+    applyCorsHeaders(request, response);
     if ("OPTIONS".equals(request.getMethod())) {
       filterChain.doFilter(request, response);
       return;
@@ -125,14 +133,24 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
       throws IOException {
     response.setStatus(status);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-    response.setContentType("application/json");
-    response
-        .getWriter()
-        .write(
-            "{\"code\":"
-                + exceptionCode.getCode()
-                + ",\"message\":\""
-                + exceptionCode.getName()
-                + "\",\"details\":null}");
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    objectMapper.writeValue(response.getWriter(), ApiResult.error(exceptionCode));
+  }
+
+  private void applyCorsHeaders(HttpServletRequest request, HttpServletResponse response) {
+    String origin = request.getHeader(HttpHeaders.ORIGIN);
+    if (!frontendOrigin.equals(origin)) {
+      return;
+    }
+    response.setHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, frontendOrigin);
+    response.setHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true");
+    response.addHeader(HttpHeaders.VARY, HttpHeaders.ORIGIN);
+    if ("OPTIONS".equals(request.getMethod())) {
+      response.setHeader(
+          HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET,HEAD,POST,PUT,DELETE,OPTIONS");
+      response.setHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, HttpHeaders.CONTENT_TYPE);
+      response.addHeader(HttpHeaders.VARY, HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD);
+      response.addHeader(HttpHeaders.VARY, HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS);
+    }
   }
 }

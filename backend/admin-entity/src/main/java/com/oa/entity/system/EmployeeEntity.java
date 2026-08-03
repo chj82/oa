@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 public class EmployeeEntity {
   /** 员工ID。 */
   @TableId(value = "id", type = IdType.AUTO)
-  private long id;
+  private Long id;
 
   /** 登录用户名。 */
   @TableField("username")
@@ -55,11 +55,11 @@ public class EmployeeEntity {
 
   public EmployeeEntity() {}
 
-  public long getId() {
+  public Long getId() {
     return id;
   }
 
-  public void setId(long id) {
+  public void setId(Long id) {
     this.id = id;
   }
 

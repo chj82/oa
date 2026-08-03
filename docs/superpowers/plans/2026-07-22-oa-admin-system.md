@@ -35,7 +35,7 @@
 
 - [x] 编写实体表名、字段映射和状态枚举测试并确认失败。
 - [x] 实现统一响应、分页模型、异常，以及 `model/system/dto`、`model/system/vo`、`model/system/enums` 分包下的 DTO、VO、业务枚举；数据对象使用传统 Java Bean，所有字段添加说明用途的中文注释；枚举使用 `code` 持久化、`name` 中文展示。
-- [x] 实现 8 张表对应 Entity 与 Mapper；所有表使用单一自增 `id` 主键，关联唯一性使用唯一索引；Entity 使用数据库原始字段类型，不直接引用业务枚举，`NOT NULL` 数值字段使用 Java 基本类型。
+- [x] 实现系统表对应 Entity 与 Mapper；所有表使用单一自增 `id` 主键，关联唯一性使用唯一索引；Entity 使用数据库原始字段类型，不直接引用业务枚举，自增主键 `id` 使用 `Long`，其他 `NOT NULL` 数值字段使用 Java 基本类型。
 - [x] 写入与设计一致的人工执行 DDL。
 - [x] 运行模块测试，确认映射与 SQL 名称一致。
 

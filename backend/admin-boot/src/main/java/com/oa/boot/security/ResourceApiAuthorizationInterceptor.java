@@ -1,14 +1,17 @@
 package com.oa.boot.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oa.common.context.CurrentEmployeeContext;
 import com.oa.common.exception.AuthenticationInfrastructureException;
 import com.oa.common.model.common.enums.ExceptionCode;
 import com.oa.common.model.system.vo.CurrentEmployeeVO;
+import com.oa.common.response.ApiResult;
 import com.oa.service.system.PermissionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
@@ -17,9 +20,12 @@ import org.springframework.web.servlet.HandlerMapping;
 @Component
 public class ResourceApiAuthorizationInterceptor implements HandlerInterceptor {
   private final PermissionService permissionService;
+  private final ObjectMapper objectMapper;
 
-  public ResourceApiAuthorizationInterceptor(PermissionService permissionService) {
+  public ResourceApiAuthorizationInterceptor(
+      PermissionService permissionService, ObjectMapper objectMapper) {
     this.permissionService = permissionService;
+    this.objectMapper = objectMapper;
   }
 
   /** 校验当前登录员工对已匹配接口模板的访问权限。 */
@@ -57,14 +63,7 @@ public class ResourceApiAuthorizationInterceptor implements HandlerInterceptor {
       throws IOException {
     response.setStatus(status);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-    response.setContentType("application/json");
-    response
-        .getWriter()
-        .write(
-            "{\"code\":"
-                + exceptionCode.getCode()
-                + ",\"message\":\""
-                + exceptionCode.getName()
-                + "\",\"details\":null}");
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    objectMapper.writeValue(response.getWriter(), ApiResult.error(exceptionCode));
   }
 }
