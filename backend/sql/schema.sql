@@ -1,3 +1,5 @@
+-- OA系统完整表结构，仅用于空库初始化，不创建或选择数据库。
+
 CREATE TABLE t_department (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '部门ID',
     parent_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '父部门ID，根部门为0',
@@ -108,3 +110,13 @@ CREATE TABLE t_resource_api (
     UNIQUE KEY udx_resource_api_resource_api (resource_id, api_id),
     KEY idx_resource_api_api_resource (api_id, resource_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源接口关联';
+
+CREATE TABLE t_system_version (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '系统版本ID',
+    version_code VARCHAR(64) NOT NULL COMMENT '版本编码',
+    version_value BIGINT UNSIGNED NOT NULL COMMENT '版本值',
+    created_at DATETIME(3) NOT NULL COMMENT '创建时间',
+    updated_at DATETIME(3) NOT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY udx_system_version_code (version_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统版本';

@@ -17,9 +17,9 @@ class RolePersistenceStructureTest {
     String ddl =
         Files.readString(
             existing(
-                Path.of("../sql/2026072201-system-init.sql"),
-                Path.of("sql/2026072201-system-init.sql"),
-                Path.of("backend/sql/2026072201-system-init.sql")));
+                Path.of("../sql/schema.sql"),
+                Path.of("sql/schema.sql"),
+                Path.of("backend/sql/schema.sql")));
     assertTrue(ddl.contains("UNIQUE KEY udx_role_code (code)"));
     assertTrue(ddl.contains("UNIQUE KEY udx_role_name (name)"));
   }

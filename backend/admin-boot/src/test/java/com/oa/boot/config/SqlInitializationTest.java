@@ -188,22 +188,24 @@ class SqlInitializationTest {
     assertTrue(sql.contains("AND @permission_changed > 0;"));
   }
 
-  /** 权限缓存重构SQL必须创建并初始化系统版本。 */
+  /** 结构和数据基线必须完整定义并初始化系统版本。 */
   @Test
-  void 权限缓存重构SQL包含快照版本表和初始数据() throws IOException {
-    String sql = Files.readString(findSql("2026073101-permission-cache-redesign.sql"));
+  void SQL基线包含完整表结构和快照版本初始数据() throws IOException {
+    String schemaSql = Files.readString(findSql("schema.sql"));
+    String dataSql = Files.readString(findSql());
 
-    assertTrue(sql.contains("CREATE TABLE t_system_version"));
-    assertTrue(sql.contains("version_code VARCHAR(64) NOT NULL"));
-    assertTrue(sql.contains("version_value BIGINT UNSIGNED NOT NULL"));
-    assertTrue(sql.contains("UNIQUE KEY udx_system_version_code (version_code)"));
-    assertTrue(sql.contains("created_at DATETIME(3) NOT NULL"));
-    assertTrue(sql.contains("updated_at DATETIME(3) NOT NULL"));
-    assertTrue(sql.contains("VALUES ('permission_snapshot', 0, NOW(3), NOW(3))"));
+    assertEquals(9, countOccurrences(schemaSql, "CREATE TABLE "));
+    assertTrue(schemaSql.contains("CREATE TABLE t_system_version"));
+    assertTrue(schemaSql.contains("version_code VARCHAR(64) NOT NULL"));
+    assertTrue(schemaSql.contains("version_value BIGINT UNSIGNED NOT NULL"));
+    assertTrue(schemaSql.contains("UNIQUE KEY udx_system_version_code (version_code)"));
+    assertTrue(schemaSql.contains("created_at DATETIME(3) NOT NULL"));
+    assertTrue(schemaSql.contains("updated_at DATETIME(3) NOT NULL"));
+    assertTrue(dataSql.contains("SELECT 'permission_snapshot', 0, @init_now, @init_now"));
   }
 
   private Path findSql() {
-    return findSql("2026080301-system-data-reinit.sql");
+    return findSql("data.sql");
   }
 
   private Map<String, Set<String>> parseResourceApiMappings(String sql) {
@@ -237,6 +239,10 @@ class SqlInitializationTest {
   private void assertMapping(
       Map<String, Set<String>> mappings, String resourceCode, String... apiPaths) {
     assertEquals(Set.of(apiPaths), mappings.get(resourceCode), "资源接口映射不正确：" + resourceCode);
+  }
+
+  private int countOccurrences(String source, String value) {
+    return (source.length() - source.replace(value, "").length()) / value.length();
   }
 
   private Path findSql(String filename) {

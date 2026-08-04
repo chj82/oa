@@ -1,5 +1,7 @@
 # 权限缓存重构实施计划
 
+> **历史说明：** 本计划中的日期 SQL 路径已由 `backend/sql/schema.sql` 和 `backend/sql/data.sql` 取代，仅保留正文作为实施记录。
+
 > **面向 Agent 执行者：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 按任务执行；所有步骤使用复选框跟踪。
 
 **目标：** 将当前按员工缓存完整权限并全局失效的实现，重构为员工授权关系 Redis 缓存、角色授权关系 Redis 缓存和 JVM 永久资源权限快照，并以数据库持久版本和 Redis 镜像保证多实例刷新。

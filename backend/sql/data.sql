@@ -1,13 +1,17 @@
--- 仅用于空库完成建表后的完整基础数据初始化。
--- 执行顺序：2026072201-system-init.sql -> 2026073101-permission-cache-redesign.sql
---          -> 2026080301-system-data-reinit.sql。
--- 使用本文件时不要再执行 2026073001-system-data-init.sql 和
--- 2026073102-task-management.sql。
+-- OA系统完整基础数据，仅在schema.sql执行完成后人工执行。
 
 SET @init_now = NOW(3);
 SET @permission_changed = 0;
 
 START TRANSACTION;
+
+INSERT INTO t_system_version (
+    version_code, version_value, created_at, updated_at
+)
+SELECT 'permission_snapshot', 0, @init_now, @init_now
+WHERE NOT EXISTS (
+    SELECT 1 FROM t_system_version WHERE version_code = 'permission_snapshot'
+);
 
 INSERT INTO t_department (
     parent_id, name, sort_order, status, created_at, updated_at

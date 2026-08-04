@@ -489,9 +489,9 @@ public EmployeeVO create(@Valid @RequestBody EmployeeCreateDTO request) {
 }
 ```
 
-接口目录不从 Controller 扫描，不提供运行时同步命令。新增、删除或修改受保护 Controller 接口时，开发人员必须同步新增一份 `backend/sql/` 数据变更 SQL，显式维护接口目录、系统资源和资源接口关联。公开和仅登录白名单中的 Handler 不写入接口目录。
+接口目录不从 Controller 扫描，不提供运行时同步命令。项目上线前新增、删除或修改受保护 Controller 接口时，开发人员必须同步修改 `backend/sql/data.sql`，显式维护接口目录、系统资源和资源接口关联。公开和仅登录白名单中的 Handler 不写入接口目录。
 
-数据 SQL 按路径幂等补充接口，按资源编码幂等补充资源，并按资源编码和接口路径补充关联；不得覆盖管理端已经维护的接口状态和资源展示字段。已经执行过的 SQL 不得修改，接口路径变化必须通过新 SQL 明确处理旧路径和新路径。
+`data.sql` 按路径幂等补充接口，按资源编码幂等补充资源，并按资源编码和接口路径补充关联；不得覆盖管理端已经维护的接口状态和资源展示字段。首次生产部署后冻结已执行基线，接口路径变化必须通过新增迁移 SQL 明确处理旧路径和新路径。
 
 ## 9. 登录与安全
 
@@ -637,8 +637,8 @@ Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenA
 
 启动顺序：
 
-1. 创建 MySQL 数据库 `admin_system`。
-2. 人工审核并按编号顺序执行 `backend/sql/` 中尚未执行的 SQL。
+1. 创建 MySQL 数据库 `oa`。
+2. 人工审核并依次执行 `backend/sql/schema.sql` 和 `backend/sql/data.sql`。
 3. 配置本地环境变量。
 4. 启动 Redis，并确认连接配置可用。
 5. 在 `backend` 执行 `./mvnw clean test`。
@@ -646,9 +646,7 @@ Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenA
 7. Spring Boot 监听 `localhost:8080`，启动过程不扫描接口或初始化基础数据。
 8. 安装前端依赖并启动 Next.js，监听 `localhost:3000`。
 
-数据库变更 SQL 统一保存在 `backend/sql/`，按 `yyyyMMddNN-业务-说明.sql` 命名，例如结构脚本 `2026072201-system-init.sql`。SQL 由人工确认目标环境、备份要求和执行顺序后操作，应用启动过程不得扫描 Controller、创建基础数据或执行该目录。已经执行过的 SQL 不得修改；后续变更新增脚本。
-
-空库重建使用 `2026072201-system-init.sql`、`2026073101-permission-cache-redesign.sql`、`2026080301-system-data-reinit.sql`，并严格按该顺序人工执行。使用新的完整数据初始化基线时，不再执行历史数据脚本 `2026073001-system-data-init.sql` 和 `2026073102-task-management.sql`，避免重复或错误的权限资源配置。
+数据库 SQL 统一保存在 `backend/sql/`。项目尚未上线时只维护完整结构基线 `schema.sql` 和完整数据基线 `data.sql`，空库重建时严格按该顺序人工执行。应用启动过程不得扫描 Controller、创建基础数据或执行该目录。首次生产部署后，已经执行过的基线不得修改，后续变更新增按日期和序号命名的迁移 SQL。
 
 基础数据 SQL 负责根部门、默认超级管理员、接口目录、系统资源和资源接口关联。管理员仅保存 BCrypt 哈希，不在 SQL 中保存明文密码。数据 SQL 按部门名称、员工用户名、接口路径、资源编码和关联唯一键重复执行不新增重复数据，不创建虚拟系统角色；超级管理员统一通过 `is_superuser` 获取全部启用接口权限。
 
@@ -724,9 +722,9 @@ Swagger UI 本地访问地址为 `http://localhost:8080/swagger-ui.html`，OpenA
 
 1. 在 `admin-common/model`、`admin-entity`、`admin-dao`、`admin-service` 和 `admin-action` 中分别创建同名业务子包，例如 `order`。
 2. DTO 放入 `admin-common/model/order/dto`，VO 放入 `admin-common/model/order/vo`，业务枚举放入 `admin-common/model/order/enums`，缓存对象等其他共享模型放入对应语义子包；实体放入 `admin-entity/order`，Mapper 放入 `admin-dao/order`，业务服务放入 `admin-service/order`，Web 接口放入 `admin-action/controller/order`。
-3. 在 `backend/sql/` 增加按日期和序号命名的人工执行 SQL，不得修改已执行脚本。
+3. 项目上线前同步修改 `backend/sql/schema.sql` 和 `backend/sql/data.sql`；首次生产部署后改为新增按日期和序号命名的人工迁移 SQL。
 4. 为每个 Controller 接口声明稳定路由，并使用 OpenAPI 注解维护接口名称和描述。
-5. 执行接口同步，在资源管理中创建业务菜单和按钮并关联接口。
+5. 在 `data.sql` 中登记接口、业务菜单、按钮和资源接口关联。
 6. 在角色管理中授权业务资源。
 7. 在前端 `app/(admin)/business` 和 `features/business` 下创建对应功能。
 

@@ -1,5 +1,7 @@
 # OA 系统 SQL 初始化实施计划
 
+> **历史说明：** 本计划中的日期 SQL 路径已由 `backend/sql/schema.sql` 和 `backend/sql/data.sql` 取代，仅保留正文作为实施记录。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 删除运行时代码初始化和接口扫描，将系统基础数据完整迁移到人工执行的 SQL。

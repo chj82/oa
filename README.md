@@ -15,13 +15,11 @@ OA 管理系统采用前后端分离结构。后端使用 Java 17、Spring Boot�
 应用启动时不会自动创建或更新数据库结构。首次运行前，由开发或运维人员审核并人工执行：
 
 ```bash
-mysql -u root -p oa < backend/sql/2026072201-system-init.sql
-mysql -u root -p oa < backend/sql/2026073001-system-data-init.sql
-mysql -u root -p oa < backend/sql/2026073101-permission-cache-redesign.sql
-mysql -u root -p oa < backend/sql/2026073102-task-management.sql
+mysql -u root -p oa < backend/sql/schema.sql
+mysql -u root -p oa < backend/sql/data.sql
 ```
 
-前两份 SQL 创建基础结构并初始化根部门、默认管理员、系统接口、系统资源及关联；后两份 SQL 增加权限快照版本和任务管理接口。默认管理员为 `admin / 12345678`，首次登录后应立即修改密码。后续 SQL 变更继续存放在 `backend/sql/`，项目不使用 Flyway、Liquibase 或 Spring SQL 自动初始化。
+`schema.sql` 创建当前完整表结构，`data.sql` 初始化根部门、默认管理员、系统接口、系统资源、关联和权限快照版本。默认管理员为 `admin / 12345678`，首次登录后应立即修改密码。项目尚未上线时直接维护这两份完整基线；首次生产部署后冻结已执行基线，后续数据库变更新增人工执行的迁移 SQL。项目不使用 Flyway、Liquibase 或 Spring SQL 自动初始化。
 
 ## 启动后端
 
@@ -36,7 +34,7 @@ mvn -pl backend/admin-boot -am spring-boot:run
 
 默认服务地址为 `http://localhost:8080`，Swagger UI 地址为 `http://localhost:8080/swagger-ui.html`。
 
-应用启动不创建基础数据，也不扫描 Controller 同步接口目录。新增或修改接口路径时，必须同步新增并人工执行 `backend/sql/` 下的数据变更 SQL。
+应用启动不创建基础数据，也不扫描 Controller 同步接口目录。项目上线前新增或修改接口路径时，必须同步更新 `backend/sql/data.sql`。
 
 ## 启动前端
 

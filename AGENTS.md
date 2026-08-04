@@ -61,7 +61,8 @@
 - 唯一索引使用 `udx_` 前缀，普通索引使用 `idx_` 前缀。
 - 不使用数据库外键和级联；关联完整性由 Service 显式维护。
 - SQL 仅存放在 `backend/sql/` 并由人工审核执行；应用启动不得自动执行 SQL。
-- 系统基础数据和接口目录只通过 SQL 初始化，禁止使用 Runner、Controller 扫描或其他运行时代码初始化。新增、删除或修改 Controller 接口路径时，必须同步新增数据变更 SQL，维护 `t_system_api`、`t_system_resource` 和 `t_resource_api`。
+- 项目尚未上线时，`backend/sql/schema.sql` 是完整结构基线，`backend/sql/data.sql` 是完整基础数据基线；允许直接维护这两份脚本，不保留历史增量 SQL。首次生产部署后必须冻结已执行基线，后续数据库变更新增迁移 SQL，不得修改生产环境已经执行的脚本。
+- 系统基础数据和接口目录只通过 SQL 初始化，禁止使用 Runner、Controller 扫描或其他运行时代码初始化。项目上线前新增、删除或修改 Controller 接口路径时，必须同步修改 `data.sql`，维护 `t_system_api`、`t_system_resource` 和 `t_resource_api`。
 - 不引入 Flyway、Liquibase 或其他自动迁移机制。
 - 时间字段由应用写入，不依赖数据库默认时间。
 - 创建时间、更新时间等日期时间列使用 MySQL `DATETIME(3)`，Entity 使用 `LocalDateTime`；仅日期字段才使用 `DATE` / `LocalDate`，不使用旧 `java.util.Date`。

@@ -291,9 +291,9 @@ class EntityMappingTest {
   /** DDL 必须包含全部实体对应表，且接口表不得出现额外业务字段。 */
   @Test
   void shouldKeepSqlTableNamesConsistent() throws Exception {
-    Path sqlFile = Path.of("backend/sql/2026072201-system-init.sql");
+    Path sqlFile = Path.of("backend/sql/schema.sql");
     if (!Files.exists(sqlFile)) {
-      sqlFile = Path.of("../sql/2026072201-system-init.sql");
+      sqlFile = Path.of("../sql/schema.sql");
     }
     String ddl = Files.readString(sqlFile);
     List.of(
